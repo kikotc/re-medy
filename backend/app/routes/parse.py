@@ -41,4 +41,3 @@ async def autofill_fields(req: AutofillFieldsRequest):
     if not req.display_name and not req.dosage_text and not req.instructions:
         raise HTTPException(status_code=400, detail="At least one field must be provided")
     return await autofill_from_fields(req)
-

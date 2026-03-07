@@ -313,4 +313,3 @@ async def analyze_adr(
         return json.loads(text)
     except Exception:
         return {"likely_culprits": [], "warning_level": "low"}
-    

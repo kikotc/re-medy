@@ -142,4 +142,3 @@ async def check_conflicts(req: ConflictCheckRequest):
         uncertainty_reason=uncertainty_reason,
         allow_override=True,
     )
-    
