@@ -1,3 +1,84 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { getTodaySchedule, logMedicationTaken } from "@/lib/api";
+import { ScheduleItem } from "@/lib/types";
+
 export default function TodayPage() {
-  return <div>Today</div>;
+  const [items, setItems] = useState<ScheduleItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadToday() {
+      const data = await getTodaySchedule();
+
+      const sorted = [...data].sort((a, b) =>
+        a.scheduled_time.localeCompare(b.scheduled_time)
+      );
+
+      setItems(sorted);
+      setLoading(false);
+    }
+
+    loadToday();
+  }, []);
+
+  const handleToggleTaken = async (scheduleItemId: string) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.schedule_item_id === scheduleItemId
+          ? { ...item, taken: !item.taken }
+          : item
+      )
+    );
+
+    await logMedicationTaken();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold">Today</h1>
+        <p className="text-sm text-gray-500">
+          Track each scheduled dose for today.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading...</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl border p-4 text-sm text-gray-500">
+          No medications scheduled for today.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <label
+              key={item.schedule_item_id}
+              className="flex items-center justify-between rounded-2xl border p-4 cursor-pointer"
+            >
+              <div>
+                <div className="font-medium">{item.display_name}</div>
+                <div className="text-sm text-gray-500">
+                  {item.scheduled_time}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500">
+                  {item.taken ? "Taken" : "Not taken"}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={item.taken}
+                  onChange={() => handleToggleTaken(item.schedule_item_id)}
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+              </div>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import AddMedicationForm from "@/components/AddMedicationForm";
 import PhotoUploadPanel from "@/components/PhotoUploadPanel";
+import MedicationCard from "@/components/MedicationCard";
 import { mockMedications } from "@/lib/mockData";
 
 type SuggestedFields = {
@@ -147,17 +148,11 @@ export default function MedsPage() {
         </>
       )}
 
-      <div className="space-y-3">
-        {mockMedications.map((med) => (
-          <div key={med.id} className="rounded-2xl border p-4">
-            <div className="font-medium">{med.display_name}</div>
-            <div className="text-sm text-gray-500">{med.dosage_text}</div>
-            {med.instructions && (
-              <div className="text-sm text-gray-500">{med.instructions}</div>
-            )}
-          </div>
-        ))}
-      </div>
+<div className="space-y-3">
+  {mockMedications.map((med) => (
+    <MedicationCard key={med.id} med={med} />
+  ))}
+</div>
     </div>
   );
 }
