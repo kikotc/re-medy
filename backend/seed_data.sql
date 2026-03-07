@@ -19,7 +19,11 @@ INSERT INTO interaction_rules (ingredient_a, ingredient_b, severity, reason, aut
 ('ciprofloxacin', 'calcium carbonate', 'moderate', 'Calcium reduces ciprofloxacin absorption', true, 2, 'Take ciprofloxacin at least 2 hours before or 6 hours after calcium'),
 ('metformin', 'alcohol', 'major', 'Increased risk of lactic acidosis', false, null, 'Avoid alcohol while taking metformin'),
 ('lisinopril', 'potassium', 'moderate', 'ACE inhibitors can raise potassium levels', false, null, 'Monitor potassium levels regularly'),
-('omeprazole', 'clopidogrel', 'major', 'Omeprazole may reduce the effectiveness of clopidogrel', false, null, 'Consider an alternative PPI — consult your doctor');
+('omeprazole', 'clopidogrel', 'major', 'Omeprazole may reduce the effectiveness of clopidogrel', false, null, 'Consider an alternative PPI — consult your doctor'),
+('acetaminophen', 'alcohol', 'major', 'Severe liver damage risk', false, null, 'Do not drink alcohol while taking acetaminophen'),
+('acetaminophen', 'warfarin', 'moderate', 'May increase anticoagulant effect', false, null, 'Monitor INR more frequently'),
+('diphenhydramine', 'alcohol', 'major', 'Dangerously increased sedation', false, null, 'Do not combine'),
+('diphenhydramine', 'sertraline', 'moderate', 'Increased serotonergic and anticholinergic effects', false, null, 'Use caution — monitor for excessive drowsiness');
 
 -- 3. Populate Side Effect Rules
 INSERT INTO side_effect_rules (ingredient, effect, likelihood, notes) VALUES
@@ -39,4 +43,13 @@ INSERT INTO side_effect_rules (ingredient, effect, likelihood, notes) VALUES
 ('levothyroxine', 'palpitations', 'possible', 'May indicate dose too high'),
 ('prednisone', 'insomnia', 'high', 'Take in the morning'),
 ('warfarin', 'bleeding', 'high', 'Primary risk, monitor INR'),
-('aspirin', 'stomach pain', 'high', 'GI irritation is common');
+('aspirin', 'stomach pain', 'high', 'GI irritation is common'),
+('acetaminophen', 'nausea', 'possible', 'Less common than with NSAIDs'),
+('diphenhydramine', 'dry mouth', 'high', 'Anticholinergic effect'),
+('diphenhydramine', 'dizziness', 'high', 'Common, avoid driving'),
+('phenylephrine', 'increased blood pressure', 'high', 'Decongestant effect'),
+('phenylephrine', 'insomnia', 'possible', 'Stimulant properties'),
+('dextromethorphan', 'drowsiness', 'possible', 'At higher doses'),
+('dextromethorphan', 'nausea', 'possible', 'Common side effect'),
+('cholecalciferol', 'nausea', 'possible', 'Usually only at very high doses'),
+('cholecalciferol', 'constipation', 'possible', 'Rare at normal doses');

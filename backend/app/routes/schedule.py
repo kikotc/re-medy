@@ -4,13 +4,14 @@ from fastapi import APIRouter, HTTPException, Query
 from app.database import get_supabase
 from app.models.medication import (
     WeeklyScheduleResponse,
+    MonthlyScheduleResponse,
     ScheduleItem,
     ApplyScheduleSuggestionRequest,
     Medication,
     Schedule,
     ActiveIngredient,
 )
-from app.services.schedule import expand_weekly_schedule, expand_schedule_for_date
+from app.services.schedule import expand_weekly_schedule, expand_schedule_for_date, expand_monthly_schedule
 
 router = APIRouter()
 
@@ -74,14 +75,38 @@ async def get_weekly_schedule(
 
 
 @router.get("/today/{user_id}", response_model=list[ScheduleItem])
-async def get_today_schedule(user_id: str):
+async def get_today_schedule(
+    user_id: str,
+    local_date: date | None = Query(None, description="Client local date YYYY-MM-DD; defaults to server date"),
+):
     db = get_supabase()
     rows = db.table("medications").select("*").eq("user_id", user_id).execute()
     meds = [_row_to_medication(r) for r in rows.data]
 
-    today = date.today()
+    today = local_date or date.today()
     taken_lookup = _build_taken_lookup(user_id, today, today)
     return expand_schedule_for_date(meds, today, taken_lookup)
+
+
+@router.get("/schedule/{user_id}/month", response_model=MonthlyScheduleResponse)
+async def get_monthly_schedule(
+    user_id: str,
+    year: int = Query(..., description="Year, e.g. 2026"),
+    month: int = Query(..., ge=1, le=12, description="Month, 1-12"),
+):
+    db = get_supabase()
+    rows = db.table("medications").select("*").eq("user_id", user_id).execute()
+    meds = [_row_to_medication(r) for r in rows.data]
+
+    import calendar as cal
+    num_days = cal.monthrange(year, month)[1]
+    start = date(year, month, 1)
+    end = date(year, month, num_days)
+    taken_lookup = _build_taken_lookup(user_id, start, end)
+
+    response = expand_monthly_schedule(meds, year, month, taken_lookup)
+    response.user_id = user_id
+    return response
 
 
 @router.post("/schedule/apply-suggestion")

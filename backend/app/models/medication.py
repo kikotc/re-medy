@@ -130,6 +130,13 @@ class WeeklyScheduleResponse(BaseModel):
     days: list[DaySchedule] = Field(default_factory=list)
 
 
+class MonthlyScheduleResponse(BaseModel):
+    user_id: str
+    year: int
+    month: int
+    days: list[DaySchedule] = Field(default_factory=list)
+
+
 # ── Parse request models ─────────────────────────────────────────
 
 class ParseMedicationTextRequest(BaseModel):
