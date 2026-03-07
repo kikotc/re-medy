@@ -5,28 +5,47 @@ import AddMedicationForm from "@/components/AddMedicationForm";
 import PhotoUploadPanel from "@/components/PhotoUploadPanel";
 import { mockMedications } from "@/lib/mockData";
 
-// FOR TESTING AHHHHHHH
-const mockSuggestedValues = {
-  displayName: "Tylenol",
-  dosageText: "500 mg",
-  instructions: "Take as needed",
-  recurrenceType: "daily" as const,
-  daysOfWeek: [],
-  time: "09:00",
+type SuggestedFields = {
+  displayName?: boolean;
+  dosageText?: boolean;
+  instructions?: boolean;
+  recurrenceType?: boolean;
+  daysOfWeek?: boolean;
+  time?: boolean;
 };
 
-const mockSuggestedFields = {
-  displayName: true,
-  dosageText: true,
-  instructions: true,
-  recurrenceType: true,
-  daysOfWeek: false,
-  time: true,
+type FormValues = {
+  displayName: string;
+  dosageText: string;
+  instructions: string;
+  recurrenceType: "daily" | "weekly";
+  daysOfWeek: string[];
+  time: string;
 };
 
 export default function MedsPage() {
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [entryMode, setEntryMode] = useState<"photo" | "manual" | null>(null);
+
+  const [parsedValues, setParsedValues] = useState<Partial<FormValues> | null>(
+    null
+  );
+  const [suggestedFields, setSuggestedFields] = useState<SuggestedFields>({});
+
+  const handleParsed = (
+    values: Partial<FormValues>,
+    suggested: SuggestedFields
+  ) => {
+    setParsedValues(values);
+    setSuggestedFields(suggested);
+    setEntryMode("manual");
+  };
+
+  const resetAddFlow = () => {
+    setEntryMode(null);
+    setParsedValues(null);
+    setSuggestedFields({});
+  };
 
   return (
     <div className="space-y-4">
@@ -35,7 +54,7 @@ export default function MedsPage() {
         <button
           onClick={() => {
             setShowAddPanel((prev) => !prev);
-            if (showAddPanel) setEntryMode(null);
+            if (showAddPanel) resetAddFlow();
           }}
           className="rounded-full border px-4 py-2 text-sm font-medium"
         >
@@ -90,7 +109,7 @@ export default function MedsPage() {
                 >
                   ← Back
                 </button>
-                <PhotoUploadPanel />
+                <PhotoUploadPanel onParsed={handleParsed} />
               </div>
             )}
 
@@ -98,14 +117,14 @@ export default function MedsPage() {
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => setEntryMode(null)}
+                  onClick={() => resetAddFlow()}
                   className="text-sm text-gray-500"
                 >
                   ← Back
                 </button>
                 <AddMedicationForm
-                  initialValues={mockSuggestedValues}
-                  suggestedFields={mockSuggestedFields}
+                  initialValues={parsedValues ?? undefined}
+                  suggestedFields={suggestedFields}
                 />
               </div>
             )}
@@ -119,10 +138,10 @@ export default function MedsPage() {
               </p>
             </div>
 
-            <PhotoUploadPanel />
+            <PhotoUploadPanel onParsed={handleParsed} />
             <AddMedicationForm
-              initialValues={mockSuggestedValues}
-              suggestedFields={mockSuggestedFields}
+              initialValues={parsedValues ?? undefined}
+              suggestedFields={suggestedFields}
             />
           </div>
         </>

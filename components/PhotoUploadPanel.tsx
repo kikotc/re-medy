@@ -2,7 +2,29 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export default function PhotoUploadPanel() {
+type FormValues = {
+  displayName: string;
+  dosageText: string;
+  instructions: string;
+  recurrenceType: "daily" | "weekly";
+  daysOfWeek: string[];
+  time: string;
+};
+
+type SuggestionFlags = {
+  displayName?: boolean;
+  dosageText?: boolean;
+  instructions?: boolean;
+  recurrenceType?: boolean;
+  daysOfWeek?: boolean;
+  time?: boolean;
+};
+
+type PhotoUploadPanelProps = {
+  onParsed?: (values: Partial<FormValues>, suggested: SuggestionFlags) => void;
+};
+
+export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -12,6 +34,7 @@ export default function PhotoUploadPanel() {
   const [showCamera, setShowCamera] = useState(false);
   const [cameraSupported, setCameraSupported] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
 
   useEffect(() => {
     setCameraSupported(
@@ -22,9 +45,8 @@ export default function PhotoUploadPanel() {
 
     return () => {
       stopCamera();
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
-  }, [previewUrl]);
+  }, []);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -37,22 +59,28 @@ export default function PhotoUploadPanel() {
     fileInputRef.current?.click();
   };
 
+  const setPreview = (url: string) => {
+    setPreviewUrl((prev) => {
+      if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return url;
+    });
+    setShowCamera(false);
+    stopCamera();
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
     const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    setShowCamera(false);
-    stopCamera();
+    setPreview(url);
   };
 
   const startCamera = async () => {
     try {
       setCameraError("");
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
+        video: { facingMode: "environment" },
         audio: false,
       });
 
@@ -63,7 +91,7 @@ export default function PhotoUploadPanel() {
         videoRef.current.srcObject = stream;
       }
     } catch {
-      setCameraError("Could not access webcam.");
+      setCameraError("Could not access camera.");
       setShowCamera(false);
       stopCamera();
     }
@@ -82,11 +110,35 @@ export default function PhotoUploadPanel() {
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
     const dataUrl = canvas.toDataURL("image/png");
-    setPreviewUrl(dataUrl);
-    setShowCamera(false);
-    stopCamera();
+
+    setPreview(dataUrl);
+  };
+
+  const handleParse = async () => {
+    setIsParsing(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    onParsed?.(
+      {
+        displayName: "Tylenol",
+        dosageText: "500 mg",
+        instructions: "Take as needed",
+        recurrenceType: "daily",
+        daysOfWeek: [],
+        time: "09:00",
+      },
+      {
+        displayName: true,
+        dosageText: true,
+        instructions: true,
+        recurrenceType: true,
+        time: true,
+      }
+    );
+
+    setIsParsing(false);
   };
 
   return (
@@ -160,22 +212,34 @@ export default function PhotoUploadPanel() {
       )}
 
       {previewUrl && !showCamera && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <img
             src={previewUrl}
             alt="Medication preview"
             className="w-full rounded-2xl border object-cover"
           />
-          <button
-            type="button"
-            onClick={() => {
-              setPreviewUrl(null);
-              if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-            }}
-            className="rounded-full border px-4 py-2 text-sm font-medium"
-          >
-            Remove
-          </button>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleParse}
+              disabled={isParsing}
+              className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
+            >
+              {isParsing ? "Analyzing..." : "Use Photo"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+                setPreviewUrl(null);
+              }}
+              className="rounded-full border px-4 py-2 text-sm font-medium"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       )}
 
