@@ -1,7 +1,12 @@
 -- ===========================================
--- MedSafe Supabase Schema
+-- re-medy Supabase Schema
 -- Run this in the Supabase SQL editor
 -- ===========================================
+
+-- Users table (needed for FK references and demo data)
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY
+);
 
 -- Medications table
 CREATE TABLE IF NOT EXISTS medications (
@@ -18,24 +23,26 @@ CREATE TABLE IF NOT EXISTS medications (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_medications_user_id ON medications(user_id);
+CREATE INDEX IF NOT EXISTS idx_medications_user_id ON medications(user_id);
 
 -- Medication logs (taken/skipped)
-CREATE TABLE IF NOT EXISTS medication_logs (
-    id TEXT PRIMARY KEY,
+-- NOTE: table is named med_logs to match backend code
+CREATE TABLE IF NOT EXISTS med_logs (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     user_id TEXT NOT NULL,
     medication_id TEXT NOT NULL REFERENCES medications(id),
     date DATE NOT NULL,
     scheduled_time TEXT NOT NULL,
     taken BOOLEAN NOT NULL DEFAULT FALSE,
+    taken_at TIMESTAMPTZ,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_medication_logs_user_date ON medication_logs(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_med_logs_user_date ON med_logs(user_id, date);
 
 -- Side effect logs
 CREATE TABLE IF NOT EXISTS side_effect_logs (
-    id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     user_id TEXT NOT NULL,
     effect TEXT NOT NULL,
     severity TEXT CHECK (severity IN ('mild', 'moderate', 'severe')),
@@ -44,4 +51,25 @@ CREATE TABLE IF NOT EXISTS side_effect_logs (
     logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_side_effect_logs_user_date ON side_effect_logs(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_side_effect_logs_user_date ON side_effect_logs(user_id, date);
+
+-- Interaction rules (fallback when Gemini is unavailable)
+CREATE TABLE IF NOT EXISTS interaction_rules (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ingredient_a TEXT NOT NULL,
+    ingredient_b TEXT NOT NULL,
+    severity TEXT NOT NULL CHECK (severity IN ('major', 'moderate', 'minor')),
+    reason TEXT,
+    auto_reschedulable BOOLEAN NOT NULL DEFAULT FALSE,
+    separation_hours INTEGER,
+    guidance TEXT
+);
+
+-- Side effect rules (grounds Gemini ADR analysis)
+CREATE TABLE IF NOT EXISTS side_effect_rules (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ingredient TEXT NOT NULL,
+    effect TEXT NOT NULL,
+    likelihood TEXT CHECK (likelihood IN ('high', 'possible', 'rare')),
+    notes TEXT
+);

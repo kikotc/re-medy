@@ -162,7 +162,10 @@ async def check_interactions(
         for med in existing_meds
     ]
 
-    # Try Gemini first
+    # Always check DB rules (fast, reliable)
+    db_conflicts = _check_interactions_from_db(candidate_ingredients, existing_meds)
+
+    # Try Gemini for additional AI-powered analysis
     try:
         gemini_results = await check_interactions_gemini(candidate_payload, existing_payload)
         gemini_duplicates, gemini_conflicts = _parse_gemini_conflicts(gemini_results)
@@ -176,11 +179,19 @@ async def check_interactions(
                 seen_dup_keys.add(key)
                 merged_duplicates.append(d)
 
-        return merged_duplicates, gemini_conflicts
+        # Merge: DB conflicts + Gemini conflicts, deduplicated
+        seen_conflict_keys: set[tuple[str, str, str]] = set()
+        merged_conflicts: list[InteractionConflict] = []
+        for c in db_conflicts + gemini_conflicts:
+            key = (_normalize(c.ingredient_a), _normalize(c.ingredient_b), c.with_medication_id)
+            if key not in seen_conflict_keys:
+                seen_conflict_keys.add(key)
+                merged_conflicts.append(c)
+
+        return merged_duplicates, merged_conflicts
 
     except Exception:
-        # Gemini failed — fall back to Supabase interaction_rules table
-        db_conflicts = _check_interactions_from_db(candidate_ingredients, existing_meds)
+        # Gemini failed — return DB results only
         return local_duplicates, db_conflicts
 
 
