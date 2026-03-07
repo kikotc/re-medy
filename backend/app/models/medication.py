@@ -86,8 +86,12 @@ class InteractionConflict(BaseModel):
 
 
 # ── 6. ScheduleSuggestion ───────────────────────────────────────
+# Point 5: added target_medication_id so frontend knows which
+# existing medication's schedule needs to change.
 
 class ScheduleSuggestion(BaseModel):
+    target_medication_id: str | None = None
+    target_medication_name: str | None = None
     allowed: bool
     reason: str
     change_type: str | None = None
@@ -96,14 +100,11 @@ class ScheduleSuggestion(BaseModel):
     suggested_schedule: Schedule | None = None
 
 
-# ── 7. MedicationCreateResponse ─────────────────────────────────
+# ── 7. MedicationCreateResponse (save endpoint) ─────────────────
 
 class MedicationCreateResponse(BaseModel):
     medication: Medication
-    duplicates: list[DuplicateRisk] = Field(default_factory=list)
-    conflicts: list[InteractionConflict] = Field(default_factory=list)
-    schedule_suggestions: list[ScheduleSuggestion] = Field(default_factory=list)
-    status: Literal["saved", "saved_with_warnings", "blocked_pending_review"] = "saved"
+    status: Literal["saved", "saved_with_warnings"] = "saved"
 
 
 # ── 8. ScheduleItem ─────────────────────────────────────────────
@@ -130,6 +131,15 @@ class WeeklyScheduleResponse(BaseModel):
     days: list[DaySchedule] = Field(default_factory=list)
 
 
+# ── 9b. MonthlyScheduleResponse (point 9) ───────────────────────
+
+class MonthlyScheduleResponse(BaseModel):
+    user_id: str
+    year: int
+    month: int
+    days: list[DaySchedule] = Field(default_factory=list)
+
+
 # ── Parse request models ─────────────────────────────────────────
 
 class ParseMedicationTextRequest(BaseModel):
@@ -137,12 +147,26 @@ class ParseMedicationTextRequest(BaseModel):
     user_id: str
 
 
-# ── Conflict check request ───────────────────────────────────────
+# ── Autofill from partial form fields ────────────────────────────
+
+class AutofillFieldsRequest(BaseModel):
+    """Frontend sends whatever fields the user has already filled in.
+    All fields are optional. Gemini fills in the gaps."""
+    user_id: str
+    display_name: str | None = None
+    dosage_text: str | None = None
+    instructions: str | None = None
+    schedule: Schedule | None = None
+
+
+# ── Conflict check request/response ─────────────────────────────
+# Point 3: normalized_name and active_ingredients are now optional.
+# If missing, /conflicts/check will call Gemini to normalize internally.
 
 class CandidateMedication(BaseModel):
     display_name: str
-    normalized_name: str
-    active_ingredients: list[ActiveIngredient]
+    normalized_name: str | None = None
+    active_ingredients: list[ActiveIngredient] | None = None
     dosage_text: str = ""
     instructions: str = ""
     schedule: Schedule = Field(default_factory=Schedule)
@@ -153,10 +177,23 @@ class ConflictCheckRequest(BaseModel):
     candidate_medication: CandidateMedication
 
 
+# Flow statuses per project spec
+ConflictStatus = Literal[
+    "SAFE_TO_ADD",
+    "WARNING_CONFIRM_REQUIRED",
+    "SCHEDULE_CHANGE_CONFIRM_REQUIRED",
+    "UNCERTAIN_CONFIRM_REQUIRED",
+]
+
+
+# Point 4: added uncertainty_reason + allow_override
 class ConflictCheckResponse(BaseModel):
+    status: ConflictStatus
     duplicates: list[DuplicateRisk] = Field(default_factory=list)
     conflicts: list[InteractionConflict] = Field(default_factory=list)
     schedule_suggestions: list[ScheduleSuggestion] = Field(default_factory=list)
+    uncertainty_reason: str | None = None
+    allow_override: bool = True
 
 
 # ── Schedule apply ────────────────────────────────────────────────

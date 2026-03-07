@@ -1,10 +1,10 @@
-"""Gemini integration for medication parsing (text + photo), interaction checking, and ADR analysis."""
+"""Gemini integration for medication parsing (text + photo), autofill, interaction checking, and ADR analysis."""
 
 import json
 import base64
 import google.generativeai as genai
 from app.config import get_settings
-from app.models.medication import ParsedMedicationCandidate, Schedule
+from app.models.medication import ParsedMedicationCandidate, Schedule, AutofillFieldsRequest
 
 _configured = False
 
@@ -125,6 +125,82 @@ async def parse_medication_photo(image_bytes: bytes, content_type: str = "image/
         )
 
 
+# ── Autofill from partial form fields ───────────────────────────
+
+async def autofill_from_fields(req: AutofillFieldsRequest) -> ParsedMedicationCandidate:
+    """Use Gemini to fill in missing fields from a partially completed form.
+
+    The user may have typed just a medication name, or a name + dosage, etc.
+    Gemini should fill in everything it can and preserve what the user already provided.
+    """
+    _ensure_configured()
+    model = genai.GenerativeModel("gemini-2.0-flash")
+
+    # Build a description of what the user has provided
+    provided_parts: list[str] = []
+    if req.display_name:
+        provided_parts.append(f'Medication name: "{req.display_name}"')
+    if req.dosage_text:
+        provided_parts.append(f'Dosage: "{req.dosage_text}"')
+    if req.instructions:
+        provided_parts.append(f'Instructions: "{req.instructions}"')
+    if req.schedule:
+        sched_desc = f'Schedule: {req.schedule.recurrence_type}'
+        if req.schedule.days_of_week:
+            sched_desc += f', days: {req.schedule.days_of_week}'
+        if req.schedule.times:
+            sched_desc += f', times: {req.schedule.times}'
+        provided_parts.append(sched_desc)
+
+    provided_text = "\n".join(provided_parts)
+
+    prompt = (
+        'You are a medication autofill assistant. A user is filling out a medication form '
+        'and has provided some fields. Your job is to fill in the missing fields based on '
+        'what they have given you.\n\n'
+        f'Fields the user has already filled in:\n{provided_text}\n\n'
+        'IMPORTANT RULES:\n'
+        '- DO NOT change or override any field the user already provided.\n'
+        '- Fill in missing fields based on what you can infer from the provided fields.\n'
+        '- For display_name: keep exactly what the user typed.\n'
+        '- For normalized_name: provide the generic drug name in lowercase.\n'
+        '- For active_ingredients: look up the known active ingredients for this medication.\n'
+        '- For dosage_text: if the user provided it, keep it. Otherwise infer a common dosage.\n'
+        '- For instructions: if not provided, suggest common instructions for this medication.\n'
+        '- For schedule: if the user set a schedule, keep it. Otherwise suggest a reasonable default.\n'
+        '- If you cannot confidently identify the medication, set needs_review to true and confidence below 0.5.\n'
+        '- If the medication name looks like gibberish or you do not recognize it, still return valid JSON '
+        'but set needs_review to true, confidence to 0.0, and leave active_ingredients as an empty array.\n\n'
+        f'{MEDICATION_JSON_SCHEMA}'
+    )
+    try:
+        response = model.generate_content(prompt)
+        candidate = _safe_parse_candidate(response.text)
+
+        # Enforce: user-provided fields take priority
+        if req.display_name:
+            candidate.display_name = req.display_name
+        if req.dosage_text:
+            candidate.dosage_text = req.dosage_text
+        if req.instructions:
+            candidate.instructions = req.instructions
+        if req.schedule:
+            candidate.schedule = req.schedule
+
+        return candidate
+    except Exception:
+        return ParsedMedicationCandidate(
+            display_name=req.display_name or "Unknown",
+            normalized_name="unknown",
+            active_ingredients=[],
+            dosage_text=req.dosage_text or "",
+            instructions=req.instructions or "",
+            schedule=req.schedule or Schedule(),
+            needs_review=True,
+            confidence=0.0,
+        )
+
+
 # ── Interaction checking ─────────────────────────────────────────
 
 async def check_interactions_gemini(
@@ -217,7 +293,7 @@ async def analyze_adr(
         '  "likely_culprits": [\n'
         '    {\n'
         '      "medication_id": "<id from the medications list>",\n'
-        '      "display_name": "<name>",\n'
+        '      "display_name": "<n>",\n'
         '      "likelihood": "high" | "possible" | "unlikely",\n'
         '      "reason": "<brief explanation>"\n'
         '    }\n'
@@ -237,3 +313,4 @@ async def analyze_adr(
         return json.loads(text)
     except Exception:
         return {"likely_culprits": [], "warning_level": "low"}
+    

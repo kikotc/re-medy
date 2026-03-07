@@ -10,7 +10,6 @@ from app.models.medication import (
     ActiveIngredient,
     Schedule,
 )
-from app.services.conflicts import check_interactions, generate_schedule_suggestions
 
 router = APIRouter()
 
@@ -51,6 +50,11 @@ def _row_to_medication(row: dict) -> Medication:
 
 @router.post("/medications", response_model=MedicationCreateResponse)
 async def create_medication(req: MedicationCreateRequest):
+    """Save a medication to the database.
+
+    The frontend should have already called /conflicts/check before this.
+    This endpoint ONLY saves — no conflict checking is done here.
+    """
     try:
         db = get_supabase()
         med_id = f"med_{uuid.uuid4().hex[:12]}"
@@ -58,24 +62,7 @@ async def create_medication(req: MedicationCreateRequest):
         # Ensure user exists (FK constraint)
         _ensure_user_exists(req.user_id)
 
-        # Fetch existing meds for conflict checking
-        existing_rows = db.table("medications").select("*").eq("user_id", req.user_id).execute()
-        existing_meds = [_row_to_medication(r) for r in existing_rows.data]
-
-        # Check duplicates & conflicts via Gemini (with local fallback)
-        duplicates, conflicts = await check_interactions(req.active_ingredients, existing_meds)
-        suggestions = generate_schedule_suggestions(req.schedule, conflicts)
-
-        # Determine status
-        has_major = any(c.severity == "major" for c in conflicts)
-        if has_major:
-            status = "blocked_pending_review"
-        elif duplicates or conflicts:
-            status = "saved_with_warnings"
-        else:
-            status = "saved"
-
-        # Save to Supabase (even blocked — frontend can decide to delete)
+        # Save to Supabase
         row = {
             "id": med_id,
             "user_id": req.user_id,
@@ -95,10 +82,7 @@ async def create_medication(req: MedicationCreateRequest):
 
         return MedicationCreateResponse(
             medication=med,
-            duplicates=duplicates,
-            conflicts=conflicts,
-            schedule_suggestions=suggestions,
-            status=status,
+            status="saved",
         )
     except Exception as e:
         import traceback
