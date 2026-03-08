@@ -35,13 +35,13 @@ def _strip_markdown_fences(text: str) -> str:
 MEDICATION_JSON_SCHEMA = """\
 Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
 {
-  "display_name": "<brand or common name>",
-  "normalized_name": "<generic/active ingredient name, lowercase>",
+  "display_name": "<brand or common name, empty string if unknown>",
+  "normalized_name": "<generic/active ingredient name, lowercase, or 'unknown'>",
   "active_ingredients": [
     {"name": "<ingredient>", "strength": "<e.g. 200 mg>"}
   ],
-  "dosage_text": "<e.g. 200 mg>",
-  "instructions": "<e.g. take after meals>",
+  "dosage_text": "<e.g. 200 mg, or empty string if unknown>",
+  "instructions": "<e.g. take after meals, or empty string if unknown>",
   "schedule": {
     "recurrence_type": "daily" or "weekly",
     "days_of_week": [],
@@ -51,19 +51,42 @@ Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
   "confidence": <0.0 to 1.0>
 }
 Rules:
+- Never return null for display_name, normalized_name, dosage_text, or instructions.
+- Use empty string instead of null for missing text fields.
 - Only include a schedule if the label or text actually supports it.
-- DO NOT invent a time like 09:00 just to fill the schema.
 - If you cannot infer a schedule, set "schedule" to null and set needs_review to true.
-- "weekly" recurrence_type should include days_of_week like ["monday","wednesday"].
-- Confidence should reflect how sure you are about the parse.
-- normalized_name should be the generic drug name in lowercase when known.
 """
 
 
 def _safe_parse_candidate(raw: str) -> ParsedMedicationCandidate:
     text = _strip_markdown_fences(raw)
     data = json.loads(text)
-    return ParsedMedicationCandidate(**data)
+
+    if not isinstance(data, dict):
+        raise ValueError("Gemini response was not a JSON object")
+
+    schedule = data.get("schedule")
+    if schedule is None:
+        schedule_data = None
+    else:
+        schedule_data = {
+            "recurrence_type": schedule.get("recurrence_type") or "daily",
+            "days_of_week": schedule.get("days_of_week") or [],
+            "times": schedule.get("times") or [],
+        }
+
+    cleaned = {
+        "display_name": data.get("display_name") or "Unknown",
+        "normalized_name": data.get("normalized_name") or "unknown",
+        "active_ingredients": data.get("active_ingredients") or [],
+        "dosage_text": data.get("dosage_text") or "",
+        "instructions": data.get("instructions") or "",
+        "schedule": schedule_data,
+        "needs_review": bool(data.get("needs_review", False)),
+        "confidence": float(data.get("confidence", 0.0) or 0.0),
+    }
+
+    return ParsedMedicationCandidate(**cleaned)
 
 
 def _fallback_candidate(
@@ -87,7 +110,7 @@ def _fallback_candidate(
 
 async def parse_medication_text(raw_text: str) -> ParsedMedicationCandidate:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     prompt = (
         "You are a medication parsing assistant. Parse the following medication text into structured JSON.\n\n"
@@ -113,7 +136,7 @@ async def parse_medication_photo(
     content_type: str = "image/jpeg",
 ) -> ParsedMedicationCandidate:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -143,7 +166,7 @@ async def parse_medication_photo(
 
 async def autofill_from_fields(req: AutofillFieldsRequest) -> ParsedMedicationCandidate:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     provided_parts: list[str] = []
     if req.display_name:
@@ -209,7 +232,7 @@ async def check_interactions_gemini(
     existing_medications: list[dict],
 ) -> list[dict]:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     candidate_json = json.dumps(candidate_ingredients, indent=2, default=str)
     existing_json = json.dumps(existing_medications, indent=2, default=str)
@@ -261,7 +284,7 @@ async def analyze_adr(
     side_effect_rules: list[dict] | None = None,
 ) -> dict:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
     meds_json = json.dumps(medications, indent=2, default=str)
     logs_json = json.dumps(recent_logs, indent=2, default=str)
