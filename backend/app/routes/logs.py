@@ -26,7 +26,7 @@ async def create_med_log(req: MedicationLogCreateRequest):
     _ensure_user_exists(req.user_id)
     db = get_supabase()
 
-    # Check if a log already exists for this exact dose
+    # Check for existing log for this exact dose slot
     existing = (
         db.table("med_logs")
         .select("id")
@@ -37,12 +37,14 @@ async def create_med_log(req: MedicationLogCreateRequest):
         .execute()
     )
 
+    taken_at = datetime.now(timezone.utc).isoformat() if req.taken else None
+
     if existing.data:
-        # Update existing row
+        # Update existing row (toggle behavior)
         log_id = existing.data[0]["id"]
         db.table("med_logs").update({
             "taken": req.taken,
-            "taken_at": datetime.now(timezone.utc).isoformat() if req.taken else None,
+            "taken_at": taken_at,
         }).eq("id", log_id).execute()
         return {"status": "updated", "id": log_id}
     else:
@@ -53,7 +55,7 @@ async def create_med_log(req: MedicationLogCreateRequest):
             "date": req.date.isoformat(),
             "scheduled_time": req.scheduled_time,
             "taken": req.taken,
-            "taken_at": datetime.now(timezone.utc).isoformat() if req.taken else None,
+            "taken_at": taken_at,
         }
         result = db.table("med_logs").insert(row).execute()
         log_id = result.data[0]["id"] if result.data else None

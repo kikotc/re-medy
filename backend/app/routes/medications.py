@@ -44,48 +44,46 @@ def _row_to_medication(row: dict) -> Medication:
         start_date=row.get("start_date"),
         source=row.get("source", "manual"),
         schedule=sched,
+        needs_review=row.get("needs_review", False),
+        confidence=row.get("confidence", 1.0),
         created_at=row.get("created_at"),
     )
 
 
 @router.post("/medications", response_model=MedicationCreateResponse)
 async def create_medication(req: MedicationCreateRequest):
-    """Save a medication to the database.
+    """Save-only endpoint.
 
-    Point 3: This is save-only. No conflict checking.
-    Frontend must call /conflicts/check first, then /medications after user confirms.
+    The frontend must call POST /conflicts/check BEFORE this endpoint.
+    By the time this is called the user has already reviewed and confirmed.
     """
-    try:
-        db = get_supabase()
-        med_id = f"med_{uuid.uuid4().hex[:12]}"
+    db = get_supabase()
+    med_id = f"med_{uuid.uuid4().hex[:12]}"
 
-        _ensure_user_exists(req.user_id)
+    # Ensure user exists (FK constraint)
+    _ensure_user_exists(req.user_id)
 
-        row = {
-            "id": med_id,
-            "user_id": req.user_id,
-            "display_name": req.display_name,
-            "normalized_name": req.normalized_name,
-            "active_ingredients": [i.model_dump() for i in req.active_ingredients],
-            "dosage_text": req.dosage_text,
-            "instructions": req.instructions,
-            "start_date": req.start_date.isoformat() if req.start_date else None,
-            "source": req.source,
-            "schedule": req.schedule.model_dump(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        db.table("medications").insert(row).execute()
+    # Build and insert the medication row
+    now_iso = datetime.now(timezone.utc).isoformat()
+    row = {
+        "id": med_id,
+        "user_id": req.user_id,
+        "display_name": req.display_name,
+        "normalized_name": req.normalized_name,
+        "active_ingredients": [i.model_dump() for i in req.active_ingredients],
+        "dosage_text": req.dosage_text,
+        "instructions": req.instructions,
+        "start_date": req.start_date.isoformat() if req.start_date else None,
+        "source": req.source,
+        "schedule": req.schedule.model_dump(),
+        "needs_review": req.needs_review,
+        "confidence": req.confidence,
+        "created_at": now_iso,
+    }
+    db.table("medications").insert(row).execute()
 
-        med = _row_to_medication(row)
-
-        return MedicationCreateResponse(
-            medication=med,
-            status="saved",
-        )
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    med = _row_to_medication(row)
+    return MedicationCreateResponse(status="saved", medication=med)
 
 
 @router.get("/medications/{user_id}", response_model=list[Medication])

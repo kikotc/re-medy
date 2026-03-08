@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS medications (
     start_date DATE,
     source TEXT CHECK (source IN ('text', 'photo', 'manual')),
     schedule JSONB NOT NULL DEFAULT '{}',
+    needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence REAL NOT NULL DEFAULT 1.0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -35,7 +37,8 @@ CREATE TABLE IF NOT EXISTS med_logs (
     scheduled_time TEXT NOT NULL,
     taken BOOLEAN NOT NULL DEFAULT FALSE,
     taken_at TIMESTAMPTZ,
-    logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, medication_id, date, scheduled_time)
 );
 
 CREATE INDEX IF NOT EXISTS idx_med_logs_user_date ON med_logs(user_id, date);
@@ -70,6 +73,19 @@ CREATE TABLE IF NOT EXISTS side_effect_rules (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     ingredient TEXT NOT NULL,
     effect TEXT NOT NULL,
-    likelihood TEXT CHECK (likelihood IN ('high', 'possible', 'rare')),
+    likelihood TEXT CHECK (likelihood IN ('high', 'possible', 'unlikely')),
     notes TEXT
+);
+
+-- Schedule adjustment events (audit trail for schedule changes)
+CREATE TABLE IF NOT EXISTS schedule_adjustment_events (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    target_medication_id TEXT NOT NULL,
+    old_schedule JSONB NOT NULL,
+    suggested_schedule JSONB NOT NULL,
+    applied BOOLEAN NOT NULL DEFAULT FALSE,
+    reason TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    applied_at TIMESTAMPTZ
 );

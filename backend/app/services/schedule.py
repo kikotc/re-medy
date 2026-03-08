@@ -1,9 +1,10 @@
 """Expand stored medication schedules into concrete ScheduleItems for a date range."""
 
 from datetime import date, timedelta
+import calendar
 import hashlib
 
-from app.models.medication import Medication, ScheduleItem, DaySchedule, WeeklyScheduleResponse
+from app.models.medication import Medication, ScheduleItem, DaySchedule, WeeklyScheduleResponse, MonthlyScheduleResponse
 
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -80,5 +81,27 @@ def expand_weekly_schedule(
     return WeeklyScheduleResponse(
         user_id=medications[0].user_id if medications else "",
         week_start=week_start,
+        days=days,
+    )
+
+
+def expand_monthly_schedule(
+    medications: list[Medication],
+    year: int,
+    month: int,
+    taken_lookup: dict[str, bool] | None = None,
+) -> MonthlyScheduleResponse:
+    """Build a full MonthlyScheduleResponse for every day in the given month."""
+    num_days = calendar.monthrange(year, month)[1]
+    days: list[DaySchedule] = []
+    for day_num in range(1, num_days + 1):
+        d = date(year, month, day_num)
+        items = expand_schedule_for_date(medications, d, taken_lookup)
+        days.append(DaySchedule(date=d, items=items))
+
+    return MonthlyScheduleResponse(
+        user_id=medications[0].user_id if medications else "",
+        year=year,
+        month=month,
         days=days,
     )

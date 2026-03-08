@@ -12,7 +12,7 @@ from app.models.medication import (
     Schedule,
     ActiveIngredient,
 )
-from app.services.schedule import expand_weekly_schedule, expand_schedule_for_date
+from app.services.schedule import expand_weekly_schedule, expand_schedule_for_date, expand_monthly_schedule
 
 router = APIRouter()
 
@@ -35,6 +35,8 @@ def _row_to_medication(row: dict) -> Medication:
         start_date=row.get("start_date"),
         source=row.get("source", "manual"),
         schedule=sched,
+        needs_review=row.get("needs_review", False),
+        confidence=row.get("confidence", 1.0),
         created_at=row.get("created_at"),
     )
 
@@ -112,18 +114,38 @@ async def get_monthly_schedule(
 @router.get("/today/{user_id}", response_model=list[ScheduleItem])
 async def get_today_schedule(
     user_id: str,
-    target_date: date | None = Query(None, description="Override today's date (YYYY-MM-DD). Defaults to server date."),
+    local_date: date | None = Query(None, description="Client local date YYYY-MM-DD; defaults to server date"),
 ):
     db = get_supabase()
     rows = db.table("medications").select("*").eq("user_id", user_id).execute()
     meds = [_row_to_medication(r) for r in rows.data]
 
-    today = target_date or date.today()
+    today = local_date or date.today()
     taken_lookup = _build_taken_lookup(user_id, today, today)
     return expand_schedule_for_date(meds, today, taken_lookup)
 
 
-# Point 5 + 6: apply-suggestion now writes to schedule_adjustment_events
+@router.get("/schedule/{user_id}/month", response_model=MonthlyScheduleResponse)
+async def get_monthly_schedule(
+    user_id: str,
+    year: int = Query(..., description="Year, e.g. 2026"),
+    month: int = Query(..., ge=1, le=12, description="Month, 1-12"),
+):
+    db = get_supabase()
+    rows = db.table("medications").select("*").eq("user_id", user_id).execute()
+    meds = [_row_to_medication(r) for r in rows.data]
+
+    import calendar as cal
+    num_days = cal.monthrange(year, month)[1]
+    start = date(year, month, 1)
+    end = date(year, month, num_days)
+    taken_lookup = _build_taken_lookup(user_id, start, end)
+
+    response = expand_monthly_schedule(meds, year, month, taken_lookup)
+    response.user_id = user_id
+    return response
+
+
 @router.post("/schedule/apply-suggestion")
 async def apply_schedule_suggestion(req: ApplyScheduleSuggestionRequest):
     """Apply a schedule change and record an audit event.
@@ -146,7 +168,7 @@ async def apply_schedule_suggestion(req: ApplyScheduleSuggestionRequest):
 
     old_schedule = result.data[0].get("schedule", {})
 
-    # Update the medication's schedule
+    # Update the schedule
     db.table("medications").update({
         "schedule": req.suggested_schedule.model_dump()
     }).eq("id", req.target_medication_id).execute()
@@ -164,6 +186,19 @@ async def apply_schedule_suggestion(req: ApplyScheduleSuggestionRequest):
         }).execute()
     except Exception:
         pass  # Audit failure should not block the update
+
+    # Record audit event in schedule_adjustment_events
+    from datetime import timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.table("schedule_adjustment_events").insert({
+        "user_id": req.user_id,
+        "target_medication_id": req.medication_id,
+        "old_schedule": old_schedule,
+        "suggested_schedule": req.suggested_schedule.model_dump(),
+        "applied": True,
+        "reason": req.reason,
+        "applied_at": now_iso,
+    }).execute()
 
     return {
         "status": "updated",

@@ -33,18 +33,8 @@ class ParsedMedicationCandidate(BaseModel):
 
 
 # ── 2. MedicationCreateRequest ────────────────────────────────────
-# Point 12: source is preserved from parse step.
-
-class MedicationCreateRequest(BaseModel):
-    user_id: str
-    display_name: str
-    normalized_name: str
-    active_ingredients: list[ActiveIngredient]
-    dosage_text: str = ""
-    instructions: str = ""
-    start_date: date | None = None
-    source: Literal["text", "photo", "manual"] = "manual"
-    schedule: Schedule = Field(default_factory=Schedule)
+# (definition moved below DuplicateRisk / InteractionConflict / ScheduleSuggestion
+#  so the response model can reference them; see section 7)
 
 
 # ── 3. Medication (DB row) ────────────────────────────────────────
@@ -60,6 +50,8 @@ class Medication(BaseModel):
     start_date: date | None = None
     source: str = "manual"
     schedule: Schedule = Field(default_factory=Schedule)
+    needs_review: bool = False
+    confidence: float = 1.0
     created_at: datetime | None = None
 
 
@@ -93,8 +85,9 @@ class InteractionConflict(BaseModel):
 # so frontend knows which existing med's schedule needs to change.
 
 class ScheduleSuggestion(BaseModel):
-    target_medication_id: str | None = None
-    target_medication_name: str | None = None
+    target_medication_id: str = ""
+    target_medication_name: str = ""
+    is_candidate: bool = True
     allowed: bool
     reason: str
     change_type: str | None = None
@@ -103,12 +96,30 @@ class ScheduleSuggestion(BaseModel):
     suggested_schedule: Schedule | None = None
 
 
-# ── 7. MedicationCreateResponse (save-only endpoint) ─────────────
-# Point 3: save endpoint no longer does conflict checking.
+# ── 7. MedicationCreateRequest / Response ─────────────────────────
+
+class MedicationCreateRequest(BaseModel):
+    """Save-only endpoint (POST /medications).
+
+    The frontend should only call this AFTER conflict-check has been done
+    and the user has confirmed they want to proceed.
+    """
+    user_id: str
+    display_name: str
+    normalized_name: str
+    active_ingredients: list[ActiveIngredient]
+    dosage_text: str = ""
+    instructions: str = ""
+    start_date: date | None = None
+    source: Literal["text", "photo", "manual"] = "manual"
+    schedule: Schedule = Field(default_factory=Schedule)
+    needs_review: bool = False
+    confidence: float = 1.0
+
 
 class MedicationCreateResponse(BaseModel):
-    medication: Medication
     status: Literal["saved"] = "saved"
+    medication: Medication
 
 
 # ── 8. ScheduleItem ─────────────────────────────────────────────
@@ -168,12 +179,16 @@ class AutofillFieldsRequest(BaseModel):
 # This lets complete text input skip autofill entirely.
 
 class CandidateMedication(BaseModel):
-    display_name: str
-    normalized_name: str | None = None
-    active_ingredients: list[ActiveIngredient] | None = None
+    display_name: str = ""
+    normalized_name: str = ""
+    active_ingredients: list[ActiveIngredient] = Field(default_factory=list)
     dosage_text: str = ""
     instructions: str = ""
     schedule: Schedule = Field(default_factory=Schedule)
+    raw_text: str = ""
+    needs_review: bool = False
+    confidence: float = 1.0
+    uncertainty_reason: str = ""
 
 
 class ConflictCheckRequest(BaseModel):
@@ -195,10 +210,13 @@ class ConflictCheckResponse(BaseModel):
     duplicates: list[DuplicateRisk] = Field(default_factory=list)
     conflicts: list[InteractionConflict] = Field(default_factory=list)
     schedule_suggestions: list[ScheduleSuggestion] = Field(default_factory=list)
-    uncertainty_message: str | None = None
-    # normalized fields echoed back so frontend can carry them to save
-    normalized_name: str | None = None
-    active_ingredients: list[ActiveIngredient] | None = None
+    decision_status: Literal[
+        "SAFE_TO_ADD",
+        "WARNING_CONFIRM_REQUIRED",
+        "SCHEDULE_CHANGE_CONFIRM_REQUIRED",
+        "UNCERTAIN_CONFIRM_REQUIRED",
+    ] = "SAFE_TO_ADD"
+    message: str = ""
 
 
 # ── Schedule apply ────────────────────────────────────────────────
@@ -209,4 +227,3 @@ class ApplyScheduleSuggestionRequest(BaseModel):
     target_medication_id: str
     suggested_schedule: Schedule
     reason: str = ""
-    
