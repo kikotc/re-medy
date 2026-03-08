@@ -6,13 +6,13 @@ Preventable adverse drug events **(ADEs)** cost the healthcare industry billions
 re-medy is a scalable support engine which doesn't just track pils; it actively intercepts duplicate ingredients, blocks major drug conflict, and acts as an intelligent 3rd party monitoring for adverse side effects.
 
 ## Core Features
-### 📷 Image Auto-parse
+### Image Auto-parse
 Users bypass tedious manual entry, by snapping or uploading a photo of their medication, the system parses the data finding the exact dosage, active ingredients, and instructions.
-### ✨ Gemini-powered Conflict Engine
+### Gemini-powered Conflict Engine
 Before a medication is saved to the user's calendar, the backend cross-references its pharmacological profile against all other saved medications. Creates a confidence score regarding the usage of each drug combination, if the confidence score exceeds a certain threshold, specific functions may occur.
-### ⏰ Smart Schedulining
+### Smart Scheduling
 If there is a minor-moderate drug confidence score, it doesn't just throw a warning. The Agentic organizer automatically computes a safe ``ScheduleSuggestion``, dynamically shifting the dosage times to safely seperate the medication. Major Conflicts will be hard-blocked.
-### 🔍 Adverse Drug Reaction Analysis
+###  Adverse Drug Reaction Analysis
 When a user feels unwell after administering a drug, they can make log a new symptom. The system will synthesize their active schedule, recent ledger history, and known-side effect rules to rank the most staistically likely "culpript". Further actions also may be suggested.
 
 ## ✨ Gemini
