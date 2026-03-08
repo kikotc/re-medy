@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { analyzeSideEffect, logSideEffect } from "@/lib/api";
-import { ADRAnalysisResponse, SymptomSeverity } from "@/lib/types";
+import {
+  ADRAnalysisResponse,
+  SideEffectLogCreateRequest,
+  SymptomSeverity,
+} from "@/lib/types";
+
+const DEMO_USER_ID = "demo-user";
 
 export default function SymptomsPage() {
   const [effect, setEffect] = useState("");
@@ -11,19 +17,29 @@ export default function SymptomsPage() {
   const [result, setResult] = useState<ADRAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    await logSideEffect({
-      user_id: "demo-user",
+    const logPayload: SideEffectLogCreateRequest = {
+      user_id: DEMO_USER_ID,
       effect,
       severity,
-      date: new Date().toISOString().slice(0, 10),
+      date: today,
       notes,
+    };
+
+    await logSideEffect(logPayload);
+
+    const analysis = await analyzeSideEffect({
+      user_id: DEMO_USER_ID,
+      effect,
+      severity,
+      date: today,
     });
 
-    const analysis = await analyzeSideEffect();
     setResult(analysis);
     setLoading(false);
   };
@@ -37,7 +53,10 @@ export default function SymptomsPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border p-4">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4 rounded-2xl border p-4"
+      >
         <div className="space-y-1">
           <label className="text-sm font-medium">Symptom</label>
           <input

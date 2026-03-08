@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { getTodaySchedule, logMedicationTaken } from "@/lib/api";
-import { ScheduleItem } from "@/lib/types";
+import { MedicationLogCreateRequest, ScheduleItem } from "@/lib/types";
+
+const DEMO_USER_ID = "demo-user";
 
 export default function TodayPage() {
   const [items, setItems] = useState<ScheduleItem[]>([]);
@@ -10,7 +12,7 @@ export default function TodayPage() {
 
   useEffect(() => {
     async function loadToday() {
-      const data = await getTodaySchedule();
+      const data = await getTodaySchedule(DEMO_USER_ID);
 
       const sorted = [...data].sort((a, b) =>
         a.scheduled_time.localeCompare(b.scheduled_time)
@@ -23,16 +25,26 @@ export default function TodayPage() {
     loadToday();
   }, []);
 
-  const handleToggleTaken = async (scheduleItemId: string) => {
+  const handleToggleTaken = async (item: ScheduleItem) => {
+    const nextTaken = !item.taken;
+
     setItems((prev) =>
-      prev.map((item) =>
-        item.schedule_item_id === scheduleItemId
-          ? { ...item, taken: !item.taken }
-          : item
+      prev.map((current) =>
+        current.schedule_item_id === item.schedule_item_id
+          ? { ...current, taken: nextTaken }
+          : current
       )
     );
 
-    await logMedicationTaken();
+    const payload: MedicationLogCreateRequest = {
+      user_id: DEMO_USER_ID,
+      medication_id: item.medication_id,
+      date: item.date,
+      scheduled_time: item.scheduled_time,
+      taken: nextTaken,
+    };
+
+    await logMedicationTaken(payload);
   };
 
   return (
@@ -55,7 +67,7 @@ export default function TodayPage() {
           {items.map((item) => (
             <label
               key={item.schedule_item_id}
-              className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/5 p-4 cursor-pointer"
+              className="flex cursor-pointer items-center justify-between rounded-3xl border border-white/10 bg-white/5 p-4"
             >
               <div>
                 <div className="font-medium">{item.display_name}</div>
@@ -71,7 +83,7 @@ export default function TodayPage() {
                 <input
                   type="checkbox"
                   checked={item.taken}
-                  onChange={() => handleToggleTaken(item.schedule_item_id)}
+                  onChange={() => handleToggleTaken(item)}
                   className="h-5 w-5 accent-white"
                 />
               </div>

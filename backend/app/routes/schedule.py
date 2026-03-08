@@ -1,5 +1,6 @@
 import calendar
 from datetime import date, datetime, timedelta, timezone
+from logging import log
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import get_supabase
@@ -16,6 +17,10 @@ from app.services.schedule import expand_weekly_schedule, expand_schedule_for_da
 
 router = APIRouter()
 
+def normalize_time(value) -> str:
+    s = str(value)
+    parts = s.split(":")
+    return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
 
 def _row_to_medication(row: dict) -> Medication:
     ingredients = row.get("active_ingredients") or []
@@ -54,7 +59,8 @@ def _build_taken_lookup(user_id: str, start: date, end: date) -> dict[str, bool]
     )
     lookup: dict[str, bool] = {}
     for log in logs.data:
-        key = f"{log['medication_id']}:{log['date']}:{log['scheduled_time']}"
+        scheduled_time = normalize_time(log["scheduled_time"])
+        key = f"{log['medication_id']}:{log['date']}:{scheduled_time}"
         lookup[key] = log["taken"]
     return lookup
 

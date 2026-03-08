@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getWeeklySchedule } from "@/lib/api";
-import { ScheduleItem, WeeklyScheduleResponse } from "@/lib/types";
+import { getMonthlySchedule } from "@/lib/api";
+import type { MonthlyScheduleResponse } from "@/lib/api";
+import { ScheduleItem } from "@/lib/types";
 
 type CalendarDay = {
   date: string;
@@ -12,9 +13,10 @@ type CalendarDay = {
 };
 
 const weekDayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DEMO_USER_ID = "demo-user";
 
-function formatMonthTitle(date: Date) {
-  return date.toLocaleString("en-US", {
+function formatMonthTitle(year: number, month: number) {
+  return new Date(year, month - 1, 1).toLocaleString("en-US", {
     month: "long",
     year: "numeric",
   });
@@ -30,13 +32,19 @@ function formatSelectedDay(dateString: string) {
 }
 
 export default function SchedulePage() {
-  const [schedule, setSchedule] = useState<WeeklyScheduleResponse | null>(null);
+  const [schedule, setSchedule] = useState<MonthlyScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
     async function loadSchedule() {
-      const data = await getWeeklySchedule();
+      const now = new Date();
+      const data = await getMonthlySchedule(
+        DEMO_USER_ID,
+        now.getFullYear(),
+        now.getMonth() + 1
+      );
+
       setSchedule(data);
 
       const firstDateWithItems =
@@ -60,12 +68,11 @@ export default function SchedulePage() {
       };
     }
 
-    const baseDate = new Date(`${schedule.week_start}T00:00:00`);
-    const year = baseDate.getFullYear();
-    const month = baseDate.getMonth();
+    const year = schedule.year;
+    const month = schedule.month;
 
-    const firstOfMonth = new Date(year, month, 1);
-    const lastOfMonth = new Date(year, month + 1, 0);
+    const firstOfMonth = new Date(year, month - 1, 1);
+    const lastOfMonth = new Date(year, month, 0);
 
     const itemsByDate = new Map<string, ScheduleItem[]>();
     for (const day of schedule.days) {
@@ -90,7 +97,7 @@ export default function SchedulePage() {
     }
 
     for (let day = 1; day <= lastOfMonth.getDate(); day++) {
-      const date = new Date(year, month, day);
+      const date = new Date(year, month - 1, day);
       const isoDate = date.toISOString().slice(0, 10);
 
       days.push({
@@ -106,7 +113,7 @@ export default function SchedulePage() {
     );
 
     return {
-      monthTitle: formatMonthTitle(firstOfMonth),
+      monthTitle: formatMonthTitle(year, month),
       calendarDays: days,
       selectedItems: selected?.items ?? [],
     };
@@ -118,7 +125,7 @@ export default function SchedulePage() {
 
   if (!schedule) {
     return (
-      <div className="rounded-2xl border border-white/15 p-4 text-sm text-gray-400">
+      <div className="rounded-2xl border p-4 text-sm text-gray-500">
         Could not load schedule.
       </div>
     );
@@ -128,12 +135,12 @@ export default function SchedulePage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Schedule</h1>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-gray-500">
           View your medication schedule by month.
         </p>
       </div>
 
-      <div className="rounded-3xl border border-white/15 p-4 md:p-6">
+      <div className="rounded-3xl border p-4 md:p-6">
         <div className="mb-4 text-2xl font-semibold">{monthTitle}</div>
 
         <div className="mb-2 grid grid-cols-7 gap-2 text-center text-xs text-gray-500">
@@ -157,23 +164,17 @@ export default function SchedulePage() {
                 type="button"
                 onClick={() => setSelectedDate(day.date)}
                 className={`h-16 rounded-2xl border p-2 text-left transition md:h-20 ${
-                  isSelected
-                    ? "border-white bg-white text-black"
-                    : "border-white/10 bg-white/5 text-white hover:bg-white/8"
+                  isSelected ? "border-black bg-black text-white" : "bg-white"
                 }`}
               >
-                <div
-                  className={`text-sm font-semibold ${
-                    isSelected ? "text-black" : "text-white"
-                  }`}
-                >
+                <div className="text-sm font-semibold md:text-base">
                   {day.dayNumber}
                 </div>
 
                 {hasItems && (
                   <div
                     className={`mt-1 text-[11px] leading-tight ${
-                      isSelected ? "text-black/70" : "text-gray-400"
+                      isSelected ? "text-gray-200" : "text-gray-500"
                     }`}
                   >
                     {day.items.length} med{day.items.length > 1 ? "s" : ""}
@@ -185,26 +186,26 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-white/15 p-4 md:p-6">
+      <div className="rounded-3xl border p-4 md:p-6">
         <div className="mb-3 text-xl font-semibold">
           {selectedDate ? formatSelectedDay(selectedDate) : "Select a day"}
         </div>
 
         {selectedItems.length === 0 ? (
-          <div className="text-sm text-gray-400">No medications scheduled.</div>
+          <div className="text-sm text-gray-500">No medications scheduled.</div>
         ) : (
           <div className="space-y-3">
             {selectedItems.map((item) => (
               <div
                 key={item.schedule_item_id}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                className="rounded-2xl border p-4"
               >
                 <div className="font-medium">{item.display_name}</div>
-                <div className="mt-1 text-sm text-gray-400">
+                <div className="mt-1 text-sm text-gray-500">
                   {item.scheduled_time}
                 </div>
                 {item.taken && (
-                  <div className="mt-2 text-sm text-gray-400">Taken</div>
+                  <div className="mt-2 text-sm text-gray-500">Taken</div>
                 )}
               </div>
             ))}
