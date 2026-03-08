@@ -12,8 +12,6 @@ const weekDays = [
   "sunday",
 ] as const;
 
-const DEFAULT_MED_TIME = "21:00";
-
 type SuggestionFlags = {
   displayName?: boolean;
   dosageText?: boolean;
@@ -21,15 +19,6 @@ type SuggestionFlags = {
   recurrenceType?: boolean;
   daysOfWeek?: boolean;
   time?: boolean;
-};
-
-type ManualOverrides = {
-  displayName: boolean;
-  dosageText: boolean;
-  instructions: boolean;
-  recurrenceType: boolean;
-  daysOfWeek: boolean;
-  time: boolean;
 };
 
 type FormValues = {
@@ -41,14 +30,15 @@ type FormValues = {
   time: string;
 };
 
-type SubmitMeta = {
-  manualOverrides: ManualOverrides;
-};
+type SubmitAction = "autofill" | "check";
 
 type AddMedicationFormProps = {
   initialValues?: Partial<FormValues>;
   suggestedFields?: SuggestionFlags;
-  onSubmit?: (values: FormValues, meta: SubmitMeta) => void | Promise<void>;
+  onSubmit?: (
+    values: FormValues,
+    action: SubmitAction
+  ) => void | Promise<void>;
   submitting?: boolean;
 };
 
@@ -71,15 +61,6 @@ function FieldLabel({
   );
 }
 
-const emptyManualOverrides: ManualOverrides = {
-  displayName: false,
-  dosageText: false,
-  instructions: false,
-  recurrenceType: false,
-  daysOfWeek: false,
-  time: false,
-};
-
 export default function AddMedicationForm({
   initialValues,
   suggestedFields,
@@ -92,11 +73,8 @@ export default function AddMedicationForm({
     instructions: initialValues?.instructions ?? "",
     recurrenceType: initialValues?.recurrenceType ?? "daily",
     daysOfWeek: initialValues?.daysOfWeek ?? [],
-    time: initialValues?.time ?? DEFAULT_MED_TIME,
+    time: initialValues?.time ?? "",
   });
-
-  const [manualOverrides, setManualOverrides] =
-    useState<ManualOverrides>(emptyManualOverrides);
 
   const [formError, setFormError] = useState("");
 
@@ -107,16 +85,19 @@ export default function AddMedicationForm({
       instructions: initialValues?.instructions ?? "",
       recurrenceType: initialValues?.recurrenceType ?? "daily",
       daysOfWeek: initialValues?.daysOfWeek ?? [],
-      time: initialValues?.time ?? DEFAULT_MED_TIME,
+      time: initialValues?.time ?? "",
     });
-    setManualOverrides(emptyManualOverrides);
     setFormError("");
   }, [initialValues]);
 
-  const hasMissingDetails =
-    !values.displayName.trim() ||
-    !values.dosageText.trim() ||
-    !values.instructions.trim();
+  const hasRequiredBaseFields =
+    values.displayName.trim().length > 0 && values.dosageText.trim().length > 0;
+
+  const isFullyReadyToCheck =
+    hasRequiredBaseFields &&
+    values.instructions.trim().length > 0 &&
+    (values.recurrenceType !== "weekly" || values.daysOfWeek.length > 0) &&
+    values.time.trim().length > 0;
 
   const toggleDay = (day: string) => {
     setValues((prev) => ({
@@ -125,11 +106,9 @@ export default function AddMedicationForm({
         ? prev.daysOfWeek.filter((d) => d !== day)
         : [...prev.daysOfWeek, day],
     }));
-    setManualOverrides((prev) => ({ ...prev, daysOfWeek: true }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitWithAction = async (action: SubmitAction) => {
     setFormError("");
 
     if (!values.displayName.trim()) {
@@ -137,21 +116,27 @@ export default function AddMedicationForm({
       return;
     }
 
-    if (!values.time) {
-      setFormError("Please choose a time.");
+    if (!values.dosageText.trim()) {
+      setFormError("Please enter a dosage.");
       return;
     }
 
-    if (values.recurrenceType === "weekly" && values.daysOfWeek.length === 0) {
-      setFormError("Please choose at least one day of the week.");
+    await onSubmit?.(values, action);
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (isFullyReadyToCheck) {
+      await submitWithAction("check");
       return;
     }
 
-    await onSubmit?.(values, { manualOverrides });
+    await submitWithAction("autofill");
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border p-4">
+    <form onSubmit={handleFormSubmit} className="space-y-4 rounded-2xl border p-4">
       <div className="space-y-1">
         <FieldLabel
           label="Medication Name"
@@ -160,10 +145,9 @@ export default function AddMedicationForm({
         <input
           required
           value={values.displayName}
-          onChange={(e) => {
-            setValues((prev) => ({ ...prev, displayName: e.target.value }));
-            setManualOverrides((prev) => ({ ...prev, displayName: true }));
-          }}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, displayName: e.target.value }))
+          }
           placeholder="e.g. Advil"
           className="w-full rounded-xl border px-3 py-2"
         />
@@ -172,11 +156,11 @@ export default function AddMedicationForm({
       <div className="space-y-1">
         <FieldLabel label="Dosage" suggested={suggestedFields?.dosageText} />
         <input
+          required
           value={values.dosageText}
-          onChange={(e) => {
-            setValues((prev) => ({ ...prev, dosageText: e.target.value }));
-            setManualOverrides((prev) => ({ ...prev, dosageText: true }));
-          }}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, dosageText: e.target.value }))
+          }
           placeholder="e.g. 200 mg"
           className="w-full rounded-xl border px-3 py-2"
         />
@@ -189,10 +173,9 @@ export default function AddMedicationForm({
         />
         <textarea
           value={values.instructions}
-          onChange={(e) => {
-            setValues((prev) => ({ ...prev, instructions: e.target.value }));
-            setManualOverrides((prev) => ({ ...prev, instructions: true }));
-          }}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, instructions: e.target.value }))
+          }
           placeholder="e.g. Take after meals"
           rows={3}
           className="w-full rounded-xl border px-3 py-2"
@@ -206,15 +189,14 @@ export default function AddMedicationForm({
         />
         <select
           value={values.recurrenceType}
-          onChange={(e) => {
+          onChange={(e) =>
             setValues((prev) => ({
               ...prev,
               recurrenceType: e.target.value as "daily" | "weekly",
               daysOfWeek:
                 e.target.value === "weekly" ? prev.daysOfWeek : [],
-            }));
-            setManualOverrides((prev) => ({ ...prev, recurrenceType: true }));
-          }}
+            }))
+          }
           className="w-full rounded-xl border px-3 py-2"
         >
           <option value="daily">Daily</option>
@@ -253,28 +235,38 @@ export default function AddMedicationForm({
         <input
           type="time"
           value={values.time}
-          onChange={(e) => {
-            setValues((prev) => ({ ...prev, time: e.target.value }));
-            setManualOverrides((prev) => ({ ...prev, time: true }));
-          }}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, time: e.target.value }))
+          }
           className="w-full rounded-xl border px-3 py-2"
-          required
         />
       </div>
 
       {formError && <p className="text-sm text-red-500">{formError}</p>}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
-      >
-        {submitting
-          ? "Working..."
-          : hasMissingDetails
-            ? "Autofill Missing Fields"
-            : "Check Medication"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        {!isFullyReadyToCheck && (
+          <button
+            type="button"
+            onClick={() => submitWithAction("autofill")}
+            disabled={submitting || !hasRequiredBaseFields}
+            className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
+          >
+            {submitting ? "Working..." : "Autofill Missing Fields"}
+          </button>
+        )}
+
+        {hasRequiredBaseFields && (
+          <button
+            type="button"
+            onClick={() => submitWithAction("check")}
+            disabled={submitting}
+            className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
+          >
+            {submitting ? "Working..." : "Check Medication"}
+          </button>
+        )}
+      </div>
     </form>
   );
 }
