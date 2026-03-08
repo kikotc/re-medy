@@ -2,10 +2,10 @@ from fastapi import APIRouter
 
 from app.database import get_supabase
 from app.models.medication import (
+    ActiveIngredient,
     ConflictCheckRequest,
     ConflictCheckResponse,
     Medication,
-    ActiveIngredient,
     Schedule,
 )
 from app.services.conflicts import check_interactions, generate_schedule_suggestions
@@ -79,15 +79,9 @@ def _determine_status(
 
 @router.post("/conflicts/check", response_model=ConflictCheckResponse)
 async def check_conflicts(req: ConflictCheckRequest):
-    """Check a candidate medication for conflicts BEFORE saving.
-
-    If normalized_name / active_ingredients are missing, normalize internally
-    via Gemini so complete-text input can skip the autofill step.
-    """
     cand = req.candidate_medication
     low_confidence = cand.confidence < 0.6 or cand.needs_review
 
-    # Normalize internally if fields are missing
     if not cand.normalized_name or not cand.active_ingredients:
         raw_text = (
             cand.raw_text
@@ -99,14 +93,11 @@ async def check_conflicts(req: ConflictCheckRequest):
 
             cand.normalized_name = cand.normalized_name or parsed.normalized_name
             cand.display_name = cand.display_name or parsed.display_name
-            cand.active_ingredients = (
-                cand.active_ingredients or parsed.active_ingredients
-            )
+            cand.active_ingredients = cand.active_ingredients or parsed.active_ingredients
             cand.dosage_text = cand.dosage_text or parsed.dosage_text
             cand.instructions = cand.instructions or parsed.instructions
 
-            # Only replace schedule if it still looks like the default placeholder
-            if cand.schedule.times == ["09:00"] and parsed.schedule:
+            if (not cand.schedule.times) and parsed.schedule and parsed.schedule.times:
                 cand.schedule = parsed.schedule
 
             cand.confidence = parsed.confidence
@@ -119,7 +110,6 @@ async def check_conflicts(req: ConflictCheckRequest):
                     "The medication could not be confidently identified."
                 )
 
-    # If still no active ingredients, mark as uncertain
     if not cand.active_ingredients:
         cand.needs_review = True
         cand.uncertainty_reason = (
@@ -127,7 +117,6 @@ async def check_conflicts(req: ConflictCheckRequest):
             or "No active ingredients could be identified."
         )
 
-    # Fetch existing meds
     db = get_supabase()
     rows = db.table("medications").select("*").eq("user_id", req.user_id).execute()
     existing_meds = [_row_to_medication(r) for r in rows.data]

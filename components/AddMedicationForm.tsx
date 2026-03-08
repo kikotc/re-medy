@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const weekDays = [
   "monday",
@@ -33,7 +33,8 @@ type FormValues = {
 type AddMedicationFormProps = {
   initialValues?: Partial<FormValues>;
   suggestedFields?: SuggestionFlags;
-  onSubmit?: (values: FormValues) => void;
+  onSubmit?: (values: FormValues) => void | Promise<void>;
+  submitting?: boolean;
 };
 
 function FieldLabel({
@@ -55,296 +56,158 @@ function FieldLabel({
   );
 }
 
-function getAutofillSuggestions(values: FormValues): {
-  nextValues: Partial<FormValues>;
-  nextFlags: SuggestionFlags;
-} {
-  const name = values.displayName.trim().toLowerCase();
-
-  let defaults: Partial<FormValues> = {};
-
-  if (name.includes("advil") || name.includes("ibuprofen")) {
-    defaults = {
-      displayName: "Advil",
-      dosageText: "200 mg",
-      instructions: "Take after meals",
-      recurrenceType: "daily",
-      time: "09:00",
-    };
-  } else if (name.includes("tylenol") || name.includes("acetaminophen")) {
-    defaults = {
-      displayName: "Tylenol",
-      dosageText: "500 mg",
-      instructions: "Take as needed",
-      recurrenceType: "daily",
-      time: "09:00",
-    };
-  } else if (name.includes("vitamin d")) {
-    defaults = {
-      displayName: "Vitamin D",
-      dosageText: "1000 IU",
-      instructions: "Take with food",
-      recurrenceType: "weekly",
-      daysOfWeek: ["monday"],
-      time: "09:00",
-    };
-  } else {
-    defaults = {
-      displayName: values.displayName || "Tylenol",
-      dosageText: "500 mg",
-      instructions: "Take as directed",
-      recurrenceType: values.recurrenceType || "daily",
-      daysOfWeek:
-        values.recurrenceType === "weekly" && values.daysOfWeek.length === 0
-          ? ["monday"]
-          : values.daysOfWeek,
-      time: "09:00",
-    };
-  }
-
-  const nextValues: Partial<FormValues> = {};
-  const nextFlags: SuggestionFlags = {};
-
-  if (!values.displayName.trim() && defaults.displayName) {
-    nextValues.displayName = defaults.displayName;
-    nextFlags.displayName = true;
-  }
-
-  if (!values.dosageText.trim() && defaults.dosageText) {
-    nextValues.dosageText = defaults.dosageText;
-    nextFlags.dosageText = true;
-  }
-
-  if (!values.instructions.trim() && defaults.instructions) {
-    nextValues.instructions = defaults.instructions;
-    nextFlags.instructions = true;
-  }
-
-  if (!values.time.trim() && defaults.time) {
-    nextValues.time = defaults.time;
-    nextFlags.time = true;
-  }
-
-  if (!values.recurrenceType && defaults.recurrenceType) {
-    nextValues.recurrenceType = defaults.recurrenceType;
-    nextFlags.recurrenceType = true;
-  }
-
-  if (
-    values.recurrenceType === "weekly" &&
-    values.daysOfWeek.length === 0 &&
-    defaults.daysOfWeek &&
-    defaults.daysOfWeek.length > 0
-  ) {
-    nextValues.daysOfWeek = defaults.daysOfWeek;
-    nextFlags.daysOfWeek = true;
-  }
-
-  return { nextValues, nextFlags };
-}
-
 export default function AddMedicationForm({
   initialValues,
   suggestedFields,
   onSubmit,
+  submitting = false,
 }: AddMedicationFormProps) {
-  const defaults = useMemo<FormValues>(
-    () => ({
+  const [values, setValues] = useState<FormValues>({
+    displayName: initialValues?.displayName ?? "",
+    dosageText: initialValues?.dosageText ?? "",
+    instructions: initialValues?.instructions ?? "",
+    recurrenceType: initialValues?.recurrenceType ?? "daily",
+    daysOfWeek: initialValues?.daysOfWeek ?? [],
+    time: initialValues?.time ?? "",
+  });
+
+  const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    setValues({
       displayName: initialValues?.displayName ?? "",
       dosageText: initialValues?.dosageText ?? "",
       instructions: initialValues?.instructions ?? "",
       recurrenceType: initialValues?.recurrenceType ?? "daily",
       daysOfWeek: initialValues?.daysOfWeek ?? [],
       time: initialValues?.time ?? "",
-    }),
-    [initialValues]
-  );
+    });
+    setFormError("");
+  }, [initialValues]);
 
-  const [displayName, setDisplayName] = useState(defaults.displayName);
-  const [dosageText, setDosageText] = useState(defaults.dosageText);
-  const [instructions, setInstructions] = useState(defaults.instructions);
-  const [recurrenceType, setRecurrenceType] = useState<"daily" | "weekly">(
-    defaults.recurrenceType
-  );
-  const [daysOfWeek, setDaysOfWeek] = useState<string[]>(defaults.daysOfWeek);
-  const [time, setTime] = useState(defaults.time);
-
-  useEffect(() => {
-    setDisplayName(defaults.displayName);
-    setDosageText(defaults.dosageText);
-    setInstructions(defaults.instructions);
-    setRecurrenceType(defaults.recurrenceType);
-    setDaysOfWeek(defaults.daysOfWeek);
-    setTime(defaults.time);
-  }, [defaults]);
-
-  const [aiFlags, setAiFlags] = useState<SuggestionFlags>({
-    displayName: suggestedFields?.displayName ?? false,
-    dosageText: suggestedFields?.dosageText ?? false,
-    instructions: suggestedFields?.instructions ?? false,
-    recurrenceType: suggestedFields?.recurrenceType ?? false,
-    daysOfWeek: suggestedFields?.daysOfWeek ?? false,
-    time: suggestedFields?.time ?? false,
-  });
-
-  const [isAutofilling, setIsAutofilling] = useState(false);
-
-  const clearFlag = (key: keyof SuggestionFlags) => {
-    setAiFlags((prev) => ({ ...prev, [key]: false }));
-  };
-
-  const isComplete =
-    displayName.trim().length > 0 &&
-    dosageText.trim().length > 0 &&
-    time.trim().length > 0 &&
-    (recurrenceType === "daily" || daysOfWeek.length > 0);
+  const hasMissingDetails =
+    !values.displayName.trim() ||
+    !values.dosageText.trim() ||
+    !values.instructions.trim();
 
   const toggleDay = (day: string) => {
-    clearFlag("daysOfWeek");
-    setDaysOfWeek((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  };
-
-  const runAutofill = async () => {
-    setIsAutofilling(true);
-
-    const currentValues: FormValues = {
-      displayName,
-      dosageText,
-      instructions,
-      recurrenceType,
-      daysOfWeek,
-      time,
-    };
-
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-
-    const { nextValues, nextFlags } = getAutofillSuggestions(currentValues);
-
-    if (nextValues.displayName) setDisplayName(nextValues.displayName);
-    if (nextValues.dosageText) setDosageText(nextValues.dosageText);
-    if (nextValues.instructions) setInstructions(nextValues.instructions);
-    if (nextValues.recurrenceType) setRecurrenceType(nextValues.recurrenceType);
-    if (nextValues.daysOfWeek) setDaysOfWeek(nextValues.daysOfWeek);
-    if (nextValues.time) setTime(nextValues.time);
-
-    setAiFlags((prev) => ({ ...prev, ...nextFlags }));
-    setIsAutofilling(false);
+    setValues((prev) => ({
+      ...prev,
+      daysOfWeek: prev.daysOfWeek.includes(day)
+        ? prev.daysOfWeek.filter((d) => d !== day)
+        : [...prev.daysOfWeek, day],
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError("");
 
-    if (!isComplete) {
-      await runAutofill();
+    if (!values.displayName.trim()) {
+      setFormError("Please enter a medication name.");
       return;
     }
 
-    onSubmit?.({
-      displayName,
-      dosageText,
-      instructions,
-      recurrenceType,
-      daysOfWeek,
-      time,
-    });
+    if (!values.time) {
+      setFormError("Please choose a time.");
+      return;
+    }
+
+    if (values.recurrenceType === "weekly" && values.daysOfWeek.length === 0) {
+      setFormError("Please choose at least one day of the week.");
+      return;
+    }
+
+    await onSubmit?.(values);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border p-4">
       <div className="space-y-1">
-        <FieldLabel label="Medication name" suggested={aiFlags.displayName} />
+        <FieldLabel
+          label="Medication Name"
+          suggested={suggestedFields?.displayName}
+        />
         <input
           required
-          value={displayName}
-          onChange={(e) => {
-            clearFlag("displayName");
-            setDisplayName(e.target.value);
-          }}
+          value={values.displayName}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, displayName: e.target.value }))
+          }
           placeholder="e.g. Advil"
           className="w-full rounded-xl border px-3 py-2"
         />
       </div>
 
       <div className="space-y-1">
-        <FieldLabel label="Dosage" suggested={aiFlags.dosageText} />
+        <FieldLabel
+          label="Dosage"
+          suggested={suggestedFields?.dosageText}
+        />
         <input
-          required
-          value={dosageText}
-          onChange={(e) => {
-            clearFlag("dosageText");
-            setDosageText(e.target.value);
-          }}
+          value={values.dosageText}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, dosageText: e.target.value }))
+          }
           placeholder="e.g. 200 mg"
           className="w-full rounded-xl border px-3 py-2"
         />
       </div>
 
       <div className="space-y-1">
-        <FieldLabel label="Instructions" suggested={aiFlags.instructions} />
-        <input
-          value={instructions}
-          onChange={(e) => {
-            clearFlag("instructions");
-            setInstructions(e.target.value);
-          }}
-          placeholder="Optional"
+        <FieldLabel
+          label="Instructions"
+          suggested={suggestedFields?.instructions}
+        />
+        <textarea
+          value={values.instructions}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, instructions: e.target.value }))
+          }
+          placeholder="e.g. Take after meals"
+          rows={3}
           className="w-full rounded-xl border px-3 py-2"
         />
       </div>
 
-      <div className="space-y-2">
-        <FieldLabel label="Schedule" />
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              clearFlag("recurrenceType");
-              setRecurrenceType("daily");
-              setDaysOfWeek([]);
-            }}
-            className={`rounded-full px-4 py-2 text-sm font-medium border transition ${
-              recurrenceType === "daily"
-                ? "bg-white text-black border-white"
-                : "bg-transparent text-white border-white/40"
-            }`}
-          >
-            Daily
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              clearFlag("recurrenceType");
-              setRecurrenceType("weekly");
-            }}
-            className={`rounded-full px-4 py-2 text-sm font-medium border transition ${
-              recurrenceType === "weekly"
-                ? "bg-white text-black border-white"
-                : "bg-transparent text-white border-white/40"
-            }`}
-          >
-            Weekly
-          </button>
-        </div>
+      <div className="space-y-1">
+        <FieldLabel
+          label="Recurrence"
+          suggested={suggestedFields?.recurrenceType}
+        />
+        <select
+          value={values.recurrenceType}
+          onChange={(e) =>
+            setValues((prev) => ({
+              ...prev,
+              recurrenceType: e.target.value as "daily" | "weekly",
+              daysOfWeek:
+                e.target.value === "weekly" ? prev.daysOfWeek : [],
+            }))
+          }
+          className="w-full rounded-xl border px-3 py-2"
+        >
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
       </div>
 
-      {recurrenceType === "weekly" && (
+      {values.recurrenceType === "weekly" && (
         <div className="space-y-2">
-          <FieldLabel label="Days of week" suggested={aiFlags.daysOfWeek} />
+          <FieldLabel
+            label="Days of Week"
+            suggested={suggestedFields?.daysOfWeek}
+          />
           <div className="flex flex-wrap gap-2">
             {weekDays.map((day) => {
-              const selected = daysOfWeek.includes(day);
+              const active = values.daysOfWeek.includes(day);
               return (
                 <button
                   key={day}
                   type="button"
                   onClick={() => toggleDay(day)}
-                  className={`rounded-full border px-3 py-2 text-sm capitalize transition ${
-                    selected
-                      ? "bg-white text-black border-white"
-                      : "bg-transparent text-white border-white/40"
+                  className={`rounded-full border px-3 py-1 text-sm capitalize ${
+                    active ? "bg-black text-white" : ""
                   }`}
                 >
                   {day.slice(0, 3)}
@@ -356,31 +219,30 @@ export default function AddMedicationForm({
       )}
 
       <div className="space-y-1">
-        <FieldLabel label="Time" suggested={aiFlags.time} />
+        <FieldLabel label="Time" suggested={suggestedFields?.time} />
         <input
           type="time"
-          value={time}
-          onChange={(e) => {
-            clearFlag("time");
-            setTime(e.target.value);
-          }}
+          value={values.time}
+          onChange={(e) =>
+            setValues((prev) => ({ ...prev, time: e.target.value }))
+          }
           className="w-full rounded-xl border px-3 py-2"
+          required
         />
       </div>
 
-      {!isComplete && (
-        <p className="text-sm text-gray-500">
-          This says Autofill because some required fields are missing. AI will
-          suggest missing details and will not overwrite what you already typed.
-        </p>
-      )}
+      {formError && <p className="text-sm text-red-500">{formError}</p>}
 
       <button
         type="submit"
-        disabled={isAutofilling}
+        disabled={submitting}
         className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
       >
-        {isAutofilling ? "Autofilling..." : isComplete ? "Submit" : "Autofill"}
+        {submitting
+          ? "Working..."
+          : hasMissingDetails
+            ? "Autofill Missing Fields"
+            : "Check Medication"}
       </button>
     </form>
   );
