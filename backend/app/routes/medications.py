@@ -20,7 +20,7 @@ def _ensure_user_exists(user_id: str):
     try:
         db.table("users").upsert({"id": user_id}).execute()
     except Exception:
-        pass  # Already exists or non-critical
+        pass
 
 
 def _row_to_medication(row: dict) -> Medication:
@@ -52,17 +52,15 @@ def _row_to_medication(row: dict) -> Medication:
 async def create_medication(req: MedicationCreateRequest):
     """Save a medication to the database.
 
-    The frontend should have already called /conflicts/check before this.
-    This endpoint ONLY saves — no conflict checking is done here.
+    Point 3: This is save-only. No conflict checking.
+    Frontend must call /conflicts/check first, then /medications after user confirms.
     """
     try:
         db = get_supabase()
         med_id = f"med_{uuid.uuid4().hex[:12]}"
 
-        # Ensure user exists (FK constraint)
         _ensure_user_exists(req.user_id)
 
-        # Save to Supabase
         row = {
             "id": med_id,
             "user_id": req.user_id,

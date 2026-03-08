@@ -16,10 +16,7 @@ def _ensure_configured():
         _configured = True
 
 
-# ── Shared helpers ───────────────────────────────────────────────
-
 def _strip_markdown_fences(text: str) -> str:
-    """Remove markdown code fences from Gemini output."""
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
@@ -27,8 +24,6 @@ def _strip_markdown_fences(text: str) -> str:
         text = text[:-3]
     return text.strip()
 
-
-# ── Shared JSON schema prompt fragment ──────────────────────────
 
 MEDICATION_JSON_SCHEMA = """\
 Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
@@ -58,7 +53,6 @@ Rules:
 
 
 def _safe_parse_candidate(raw: str) -> ParsedMedicationCandidate:
-    """Parse Gemini response text into a validated Pydantic model."""
     text = _strip_markdown_fences(raw)
     data = json.loads(text)
     return ParsedMedicationCandidate(**data)
@@ -67,7 +61,6 @@ def _safe_parse_candidate(raw: str) -> ParsedMedicationCandidate:
 # ── Text parsing ────────────────────────────────────────────────
 
 async def parse_medication_text(raw_text: str) -> ParsedMedicationCandidate:
-    """Use Gemini to parse free-text medication entry."""
     _ensure_configured()
     model = genai.GenerativeModel("gemini-2.0-flash")
 
@@ -95,7 +88,6 @@ async def parse_medication_text(raw_text: str) -> ParsedMedicationCandidate:
 # ── Photo parsing ───────────────────────────────────────────────
 
 async def parse_medication_photo(image_bytes: bytes, content_type: str = "image/jpeg") -> ParsedMedicationCandidate:
-    """Use Gemini vision to extract medication info from a photo."""
     _ensure_configured()
     model = genai.GenerativeModel("gemini-2.0-flash")
 
@@ -128,15 +120,9 @@ async def parse_medication_photo(image_bytes: bytes, content_type: str = "image/
 # ── Autofill from partial form fields ───────────────────────────
 
 async def autofill_from_fields(req: AutofillFieldsRequest) -> ParsedMedicationCandidate:
-    """Use Gemini to fill in missing fields from a partially completed form.
-
-    The user may have typed just a medication name, or a name + dosage, etc.
-    Gemini should fill in everything it can and preserve what the user already provided.
-    """
     _ensure_configured()
     model = genai.GenerativeModel("gemini-2.0-flash")
 
-    # Build a description of what the user has provided
     provided_parts: list[str] = []
     if req.display_name:
         provided_parts.append(f'Medication name: "{req.display_name}"')
@@ -156,28 +142,27 @@ async def autofill_from_fields(req: AutofillFieldsRequest) -> ParsedMedicationCa
 
     prompt = (
         'You are a medication autofill assistant. A user is filling out a medication form '
-        'and has provided some fields. Your job is to fill in the missing fields based on '
-        'what they have given you.\n\n'
+        'and has provided some fields. Your job is to fill in the missing fields.\n\n'
         f'Fields the user has already filled in:\n{provided_text}\n\n'
         'IMPORTANT RULES:\n'
         '- DO NOT change or override any field the user already provided.\n'
-        '- Fill in missing fields based on what you can infer from the provided fields.\n'
+        '- Fill in missing fields based on what you can infer.\n'
         '- For display_name: keep exactly what the user typed.\n'
         '- For normalized_name: provide the generic drug name in lowercase.\n'
-        '- For active_ingredients: look up the known active ingredients for this medication.\n'
-        '- For dosage_text: if the user provided it, keep it. Otherwise infer a common dosage.\n'
-        '- For instructions: if not provided, suggest common instructions for this medication.\n'
-        '- For schedule: if the user set a schedule, keep it. Otherwise suggest a reasonable default.\n'
+        '- For active_ingredients: look up the known active ingredients.\n'
+        '- For dosage_text: if provided, keep it. Otherwise infer a common dosage.\n'
+        '- For instructions: if not provided, suggest common instructions.\n'
+        '- For schedule: if the user set one, keep it. Otherwise suggest a reasonable default.\n'
         '- If you cannot confidently identify the medication, set needs_review to true and confidence below 0.5.\n'
-        '- If the medication name looks like gibberish or you do not recognize it, still return valid JSON '
-        'but set needs_review to true, confidence to 0.0, and leave active_ingredients as an empty array.\n\n'
+        '- If the name looks like gibberish, still return valid JSON with needs_review=true, '
+        'confidence=0.0, and active_ingredients as empty array.\n\n'
         f'{MEDICATION_JSON_SCHEMA}'
     )
     try:
         response = model.generate_content(prompt)
         candidate = _safe_parse_candidate(response.text)
 
-        # Enforce: user-provided fields take priority
+        # User-provided fields always take priority
         if req.display_name:
             candidate.display_name = req.display_name
         if req.dosage_text:
@@ -207,7 +192,6 @@ async def check_interactions_gemini(
     candidate_ingredients: list[dict],
     existing_medications: list[dict],
 ) -> list[dict]:
-    """Use Gemini to detect drug-drug interactions and duplicate ingredients."""
     _ensure_configured()
     model = genai.GenerativeModel("gemini-2.0-flash")
 
@@ -219,39 +203,34 @@ async def check_interactions_gemini(
         f'New medication active ingredients:\n{candidate_json}\n\n'
         f'Their existing medications:\n{existing_json}\n\n'
         'Check for:\n'
-        '1. Duplicate active ingredients (same ingredient appearing in both new and existing)\n'
-        '2. Known drug-drug interactions between any ingredient in the new med and any ingredient in existing meds\n\n'
-        'Return ONLY valid JSON (no markdown, no explanation) as an array of objects:\n'
+        '1. Duplicate active ingredients (same ingredient in both new and existing)\n'
+        '2. Known drug-drug interactions\n\n'
+        'Return ONLY valid JSON (no markdown) as an array of objects:\n'
         '[\n'
         '  {\n'
         '    "type": "duplicate_ingredient" or "interaction",\n'
-        '    "ingredient_a": "<ingredient from new med>",\n'
-        '    "ingredient_b": "<ingredient from existing med>",\n'
-        '    "with_medication_id": "<id of the existing medication>",\n'
-        '    "with_medication_name": "<display_name of the existing medication>",\n'
+        '    "ingredient_a": "<from new med>",\n'
+        '    "ingredient_b": "<from existing med>",\n'
+        '    "with_medication_id": "<id of existing>",\n'
+        '    "with_medication_name": "<display_name of existing>",\n'
         '    "severity": "major" | "moderate" | "minor",\n'
         '    "reason": "<brief clinical reason>",\n'
         '    "auto_reschedulable": true/false,\n'
         '    "separation_hours": number or null,\n'
-        '    "guidance": "<what the patient should do>"\n'
+        '    "guidance": "<what patient should do>"\n'
         '  }\n'
         ']\n\n'
         'Rules:\n'
-        '- For duplicates, set severity to "major", auto_reschedulable to false, separation_hours to null.\n'
-        '- For interactions, assess severity based on clinical significance.\n'
-        '- auto_reschedulable should ONLY be true for absorption-based interactions where time separation actually helps.\n'
-        '- If separation helps, provide a realistic separation_hours value (usually 2-4).\n'
-        '- If there are NO interactions or duplicates, return an empty array: []\n'
-        '- Be conservative: only flag clinically established interactions.\n'
-        '- Do not invent interactions. If unsure, do not include it.\n'
+        '- For duplicates: severity="major", auto_reschedulable=false, separation_hours=null.\n'
+        '- auto_reschedulable only true for absorption-based interactions.\n'
+        '- If no issues, return empty array: []\n'
+        '- Be conservative. Do not invent interactions.\n'
     )
     try:
         response = model.generate_content(prompt)
         text = _strip_markdown_fences(response.text)
         result = json.loads(text)
-        if isinstance(result, list):
-            return result
-        return []
+        return result if isinstance(result, list) else []
     except Exception:
         return []
 
@@ -265,7 +244,6 @@ async def analyze_adr(
     recent_logs: list[dict],
     side_effect_rules: list[dict] | None = None,
 ) -> dict:
-    """Use Gemini to rank likely culprit medications for a reported side effect."""
     _ensure_configured()
     model = genai.GenerativeModel("gemini-2.0-flash")
 
@@ -281,19 +259,19 @@ async def analyze_adr(
         )
 
     prompt = (
-        'You are a medication safety analysis assistant. A patient reported the following side effect:\n\n'
+        'You are a medication safety analysis assistant. A patient reported:\n\n'
         f'Effect: {effect}\n'
         f'Severity: {severity}\n\n'
-        f'Their current medications:\n{meds_json}\n\n'
+        f'Current medications:\n{meds_json}\n\n'
         f'Recent medication logs (last 7 days):\n{logs_json}\n'
         f'{rules_section}\n'
         'Analyze which medications are most likely causing this side effect.\n\n'
-        'Return ONLY valid JSON (no markdown, no explanation) matching this schema:\n'
+        'Return ONLY valid JSON (no markdown):\n'
         '{\n'
         '  "likely_culprits": [\n'
         '    {\n'
-        '      "medication_id": "<id from the medications list>",\n'
-        '      "display_name": "<n>",\n'
+        '      "medication_id": "<id from medications list>",\n'
+        '      "display_name": "<name>",\n'
         '      "likelihood": "high" | "possible" | "unlikely",\n'
         '      "reason": "<brief explanation>"\n'
         '    }\n'
@@ -301,11 +279,10 @@ async def analyze_adr(
         '  "warning_level": "low" | "medium" | "high"\n'
         '}\n\n'
         'Rules:\n'
-        '- Rank from most to least likely.\n'
-        '- Only include medications that are plausible culprits.\n'
-        '- If known side effect rules are provided above, prioritize those mappings.\n'
-        '- warning_level should be "high" if a dangerous reaction is likely, "medium" for moderate concern, "low" for mild/common.\n'
-        '- Be concise in reasons. This is decision support, not a diagnosis.\n'
+        '- Rank most to least likely.\n'
+        '- Only include plausible culprits.\n'
+        '- Prioritize known side effect rules if provided.\n'
+        '- Be concise. This is decision support, not a diagnosis.\n'
     )
     try:
         response = model.generate_content(prompt)
@@ -313,3 +290,4 @@ async def analyze_adr(
         return json.loads(text)
     except Exception:
         return {"likely_culprits": [], "warning_level": "low"}
+    

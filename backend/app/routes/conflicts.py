@@ -41,104 +41,81 @@ def _determine_status(
     conflicts: list,
     schedule_suggestions: list,
     candidate_has_ingredients: bool,
-    uncertainty_reason: str | None,
-) -> str:
-    """Determine the conflict check status per the project flow spec."""
-    # If we couldn't identify the medication or its ingredients
-    if uncertainty_reason:
-        return "UNCERTAIN_CONFIRM_REQUIRED"
+    low_confidence: bool,
+) -> tuple[str, str | None]:
+    """Determine decision_status and optional uncertainty_message.
 
-    # If any suggestion is allowed (reschedulable), that takes priority
+    Returns (decision_status, uncertainty_message).
+    """
+    # Point 11: explicit uncertainty for unknown/niche meds
+    if not candidate_has_ingredients or low_confidence:
+        return (
+            "UNCERTAIN_CONFIRM_REQUIRED",
+            "Could not confidently identify this medication or its ingredients. "
+            "Please verify before adding.",
+        )
+
+    # Reschedulable suggestion takes priority over plain warning
     has_reschedulable = any(s.allowed for s in schedule_suggestions)
     if has_reschedulable:
-        return "SCHEDULE_CHANGE_CONFIRM_REQUIRED"
+        return ("SCHEDULE_CHANGE_CONFIRM_REQUIRED", None)
 
-    # If there are duplicates or any conflicts, warn the user
+    # Any duplicates or conflicts require confirmation
     if duplicates or conflicts:
-        return "WARNING_CONFIRM_REQUIRED"
+        return ("WARNING_CONFIRM_REQUIRED", None)
 
-    return "SAFE_TO_ADD"
+    return ("SAFE_TO_ADD", None)
 
 
 @router.post("/conflicts/check", response_model=ConflictCheckResponse)
 async def check_conflicts(req: ConflictCheckRequest):
     """Check a candidate medication for conflicts BEFORE saving.
 
-    This is a dry-run — nothing is saved to the database.
-    Frontend uses the returned status to decide what to show the user.
-
-    Point 3: If normalized_name or active_ingredients are missing,
-    this endpoint will call Gemini to normalize internally.
-    This supports the "complete text skips autofill" path.
+    Point 2: If normalized_name or active_ingredients are missing,
+    the backend normalizes internally via Gemini. This lets complete
+    text input skip the autofill step entirely.
     """
     cand = req.candidate_medication
-    uncertainty_reason: str | None = None
 
-    # ── Point 3: Internal normalization if needed ─────────────────
-    # If the frontend sent a candidate without normalized_name or
-    # active_ingredients (complete text path), use Gemini to fill them in.
-    ingredients = cand.active_ingredients or []
-    normalized_name = cand.normalized_name or ""
+    # Point 2: normalize internally if fields are missing
+    normalized_name = cand.normalized_name
+    active_ingredients = cand.active_ingredients
+    low_confidence = False
 
-    if not ingredients or not normalized_name:
-        try:
-            # Build a text string from what we have and ask Gemini to parse it
-            text_to_parse = cand.display_name
-            if cand.dosage_text:
-                text_to_parse += f" {cand.dosage_text}"
-            if cand.instructions:
-                text_to_parse += f" {cand.instructions}"
+    if not normalized_name or not active_ingredients:
+        # Use Gemini to resolve the medication from display_name
+        parsed = await parse_medication_text(
+            f"{cand.display_name} {cand.dosage_text} {cand.instructions}".strip()
+        )
+        normalized_name = parsed.normalized_name
+        active_ingredients = parsed.active_ingredients
+        low_confidence = parsed.confidence < 0.5 or parsed.needs_review
 
-            parsed = await parse_medication_text(text_to_parse)
-
-            # Use Gemini's results for missing fields only
-            if not normalized_name:
-                normalized_name = parsed.normalized_name
-            if not ingredients:
-                ingredients = parsed.active_ingredients
-
-            # If Gemini couldn't identify the medication either
-            if not ingredients or parsed.confidence < 0.3:
-                uncertainty_reason = (
-                    f"Could not confidently identify active ingredients for '{cand.display_name}'. "
-                    "This may be an unrecognized or misspelled medication."
-                )
-            elif parsed.needs_review:
-                uncertainty_reason = (
-                    f"Low confidence identification for '{cand.display_name}'. "
-                    "Please verify the medication details are correct."
-                )
-
-        except Exception:
-            uncertainty_reason = (
-                f"Unable to normalize '{cand.display_name}'. "
-                "Please verify the medication name and try again."
-            )
-
-    # ── Fetch existing medications ────────────────────────────────
+    # Fetch existing meds
     db = get_supabase()
     rows = db.table("medications").select("*").eq("user_id", req.user_id).execute()
     existing_meds = [_row_to_medication(r) for r in rows.data]
 
-    # ── Run conflict checks ───────────────────────────────────────
-    duplicates, conflicts = await check_interactions(ingredients, existing_meds)
-    suggestions = generate_schedule_suggestions(
-        cand.schedule, conflicts, existing_meds
-    )
+    # Run checks
+    duplicates, conflicts = await check_interactions(active_ingredients, existing_meds)
+    suggestions = generate_schedule_suggestions(cand.schedule, conflicts, existing_meds)
 
-    status = _determine_status(
+    decision_status, uncertainty_message = _determine_status(
         duplicates=duplicates,
         conflicts=conflicts,
         schedule_suggestions=suggestions,
-        candidate_has_ingredients=len(ingredients) > 0,
-        uncertainty_reason=uncertainty_reason,
+        candidate_has_ingredients=len(active_ingredients or []) > 0,
+        low_confidence=low_confidence,
     )
 
     return ConflictCheckResponse(
-        status=status,
+        decision_status=decision_status,
         duplicates=duplicates,
         conflicts=conflicts,
         schedule_suggestions=suggestions,
-        uncertainty_reason=uncertainty_reason,
-        allow_override=True,
+        uncertainty_message=uncertainty_message,
+        # Echo back so frontend can carry to save step
+        normalized_name=normalized_name,
+        active_ingredients=active_ingredients,
     )
+    

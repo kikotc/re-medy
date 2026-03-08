@@ -1,9 +1,11 @@
-from datetime import date, datetime
+import calendar
+from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import get_supabase
 from app.models.medication import (
     WeeklyScheduleResponse,
+    MonthlyScheduleResponse,
     ScheduleItem,
     ApplyScheduleSuggestionRequest,
     Medication,
@@ -38,7 +40,7 @@ def _row_to_medication(row: dict) -> Medication:
 
 
 def _build_taken_lookup(user_id: str, start: date, end: date) -> dict[str, bool]:
-    """Build a lookup dict from medication_logs for a date range."""
+    """Build a lookup dict from med_logs for a date range."""
     db = get_supabase()
     logs = (
         db.table("med_logs")
@@ -64,7 +66,6 @@ async def get_weekly_schedule(
     rows = db.table("medications").select("*").eq("user_id", user_id).execute()
     meds = [_row_to_medication(r) for r in rows.data]
 
-    from datetime import timedelta
     end = week_start + timedelta(days=6)
     taken_lookup = _build_taken_lookup(user_id, week_start, end)
 
@@ -73,39 +74,100 @@ async def get_weekly_schedule(
     return response
 
 
-@router.get("/today/{user_id}", response_model=list[ScheduleItem])
-async def get_today_schedule(user_id: str):
+# Point 4: monthly schedule endpoint for calendar view
+@router.get("/schedule/{user_id}/month", response_model=MonthlyScheduleResponse)
+async def get_monthly_schedule(
+    user_id: str,
+    year: int = Query(..., description="Year, e.g. 2026"),
+    month: int = Query(..., ge=1, le=12, description="Month, 1-12"),
+):
+    """Return all schedule items for a full calendar month."""
     db = get_supabase()
     rows = db.table("medications").select("*").eq("user_id", user_id).execute()
     meds = [_row_to_medication(r) for r in rows.data]
 
-    today = date.today()
+    # Get first and last day of month
+    _, num_days = calendar.monthrange(year, month)
+    month_start = date(year, month, 1)
+    month_end = date(year, month, num_days)
+
+    taken_lookup = _build_taken_lookup(user_id, month_start, month_end)
+
+    from app.models.medication import DaySchedule
+    days = []
+    for i in range(num_days):
+        d = month_start + timedelta(days=i)
+        items = expand_schedule_for_date(meds, d, taken_lookup)
+        days.append(DaySchedule(date=d, items=items))
+
+    return MonthlyScheduleResponse(
+        user_id=user_id,
+        year=year,
+        month=month,
+        days=days,
+    )
+
+
+# Point 10: accept optional date param so frontend controls "today"
+@router.get("/today/{user_id}", response_model=list[ScheduleItem])
+async def get_today_schedule(
+    user_id: str,
+    target_date: date | None = Query(None, description="Override today's date (YYYY-MM-DD). Defaults to server date."),
+):
+    db = get_supabase()
+    rows = db.table("medications").select("*").eq("user_id", user_id).execute()
+    meds = [_row_to_medication(r) for r in rows.data]
+
+    today = target_date or date.today()
     taken_lookup = _build_taken_lookup(user_id, today, today)
     return expand_schedule_for_date(meds, today, taken_lookup)
 
 
+# Point 5 + 6: apply-suggestion now writes to schedule_adjustment_events
 @router.post("/schedule/apply-suggestion")
 async def apply_schedule_suggestion(req: ApplyScheduleSuggestionRequest):
+    """Apply a schedule change and record an audit event.
+
+    Point 6: target_medication_id identifies which med is being changed
+    (could be an existing med, not just the candidate).
+    """
     db = get_supabase()
 
     # Verify medication exists and belongs to user
     result = (
         db.table("medications")
         .select("*")
-        .eq("id", req.medication_id)
+        .eq("id", req.target_medication_id)
         .eq("user_id", req.user_id)
         .execute()
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Medication not found")
 
-    # Update the schedule
+    old_schedule = result.data[0].get("schedule", {})
+
+    # Update the medication's schedule
     db.table("medications").update({
         "schedule": req.suggested_schedule.model_dump()
-    }).eq("id", req.medication_id).execute()
+    }).eq("id", req.target_medication_id).execute()
+
+    # Point 5: write audit event to schedule_adjustment_events
+    try:
+        db.table("schedule_adjustment_events").insert({
+            "user_id": req.user_id,
+            "target_medication_id": req.target_medication_id,
+            "old_schedule": old_schedule,
+            "suggested_schedule": req.suggested_schedule.model_dump(),
+            "reason": req.reason,
+            "applied": True,
+            "applied_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception:
+        pass  # Audit failure should not block the update
 
     return {
         "status": "updated",
-        "medication_id": req.medication_id,
+        "target_medication_id": req.target_medication_id,
+        "old_schedule": old_schedule,
         "new_schedule": req.suggested_schedule.model_dump(),
     }
