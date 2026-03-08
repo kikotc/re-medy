@@ -93,7 +93,32 @@ function formatTimeLabel(time: string) {
   return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
+function getCandidateScheduleSuggestion(decision: ConflictCheckResponse) {
+  return decision.schedule_suggestions.find(
+    (suggestion) =>
+      suggestion.is_candidate !== false &&
+      suggestion.allowed !== false &&
+      suggestion.suggested_schedule
+  );
+}
+
+function canUseSuggestedSchedule(decision: ConflictCheckResponse) {
+  const candidateSuggestion = getCandidateScheduleSuggestion(decision);
+
+  if (!candidateSuggestion) {
+    return false;
+  }
+
+  if (decision.duplicates.length > 0) {
+    return false;
+  }
+
+  return true;
+}
+
 function getDecisionPresentation(decision: ConflictCheckResponse) {
+  const schedulableTimingCase = canUseSuggestedSchedule(decision);
+
   const hasMajor = decision.conflicts.some(
     (conflict) => conflict.severity === "major"
   );
@@ -106,6 +131,15 @@ function getDecisionPresentation(decision: ConflictCheckResponse) {
 
   const hasDuplicates = decision.duplicates.length > 0;
   const hasConflicts = decision.conflicts.length > 0;
+
+  if (schedulableTimingCase) {
+    return {
+      title: "Timing conflict",
+      message:
+        "This interaction can likely be handled by adjusting the schedule. Review the suggested timing below.",
+      cancelFirst: false,
+    };
+  }
 
   if (hasMajor) {
     return {
@@ -157,6 +191,10 @@ function getConfirmButtonLabel(
   if (submitting) return "Saving...";
 
   if (!decision) return undefined;
+
+  if (canUseSuggestedSchedule(decision)) {
+    return "Use Suggested Schedule";
+  }
 
   if (decision.decision_status === "SCHEDULE_CHANGE_CONFIRM_REQUIRED") {
     return "Use Suggested Schedule";
@@ -478,29 +516,23 @@ export default function MedsPage() {
 
     try {
       let finalDraft = draft;
+      const candidateSuggestion = decision
+        ? getCandidateScheduleSuggestion(decision)
+        : undefined;
 
-      if (
-        decision?.decision_status === "SCHEDULE_CHANGE_CONFIRM_REQUIRED" &&
-        decision.schedule_suggestions.length > 0
-      ) {
-        const candidateSuggestion = decision.schedule_suggestions.find(
-          (suggestion) => suggestion.is_candidate && suggestion.suggested_schedule
-        );
+      if (candidateSuggestion?.suggested_schedule) {
+        finalDraft = {
+          ...draft,
+          recurrenceType:
+            candidateSuggestion.suggested_schedule.recurrence_type ||
+            draft.recurrenceType,
+          daysOfWeek:
+            candidateSuggestion.suggested_schedule.days_of_week || [],
+          time:
+            candidateSuggestion.suggested_schedule.times?.[0] || draft.time,
+        };
 
-        if (candidateSuggestion?.suggested_schedule) {
-          finalDraft = {
-            ...draft,
-            recurrenceType:
-              candidateSuggestion.suggested_schedule.recurrence_type ||
-              draft.recurrenceType,
-            daysOfWeek:
-              candidateSuggestion.suggested_schedule.days_of_week || [],
-            time:
-              candidateSuggestion.suggested_schedule.times?.[0] || draft.time,
-          };
-
-          setDraft(finalDraft);
-        }
+        setDraft(finalDraft);
       }
 
       const saved = await createMedication(
