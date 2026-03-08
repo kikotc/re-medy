@@ -75,6 +75,203 @@ function mergeParsedIntoDraft(
   };
 }
 
+function formatTimeLabel(time: string) {
+  if (!time) return "";
+  const [hourStr, minuteStr] = time.split(":");
+  const hour = Number(hourStr);
+  const minute = Number(minuteStr);
+
+  if (Number.isNaN(hour) || Number.isNaN(minute)) {
+    return time;
+  }
+
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function renderDecisionDetails(
+  decision: ConflictCheckResponse,
+  candidateDisplayName: string
+) {
+  const hasDuplicates = decision.duplicates.length > 0;
+  const hasConflicts = decision.conflicts.length > 0;
+  const hasSuggestions = decision.schedule_suggestions.length > 0;
+
+  if (!hasDuplicates && !hasConflicts && !hasSuggestions) {
+    return null;
+  }
+
+  const groupedConflicts = new Map<
+    string,
+    {
+      withMedicationId: string;
+      withMedicationName: string;
+      severity: "major" | "moderate" | "minor";
+      reasons: string[];
+      guidance: string[];
+      ingredientPairs: string[];
+      separationHours: number[];
+    }
+  >();
+
+  for (const conflict of decision.conflicts) {
+    const key = conflict.with_medication_id || conflict.with_medication_name;
+
+    if (!groupedConflicts.has(key)) {
+      groupedConflicts.set(key, {
+        withMedicationId: conflict.with_medication_id,
+        withMedicationName: conflict.with_medication_name,
+        severity: conflict.severity,
+        reasons: [],
+        guidance: [],
+        ingredientPairs: [],
+        separationHours: [],
+      });
+    }
+
+    const group = groupedConflicts.get(key)!;
+
+    const severityRank = { minor: 1, moderate: 2, major: 3 };
+    if (
+      severityRank[conflict.severity] >
+      severityRank[group.severity]
+    ) {
+      group.severity = conflict.severity;
+    }
+
+    if (conflict.reason && !group.reasons.includes(conflict.reason)) {
+      group.reasons.push(conflict.reason);
+    }
+
+    if (conflict.guidance && !group.guidance.includes(conflict.guidance)) {
+      group.guidance.push(conflict.guidance);
+    }
+
+    const pairLabel = `${conflict.ingredient_a} + ${conflict.ingredient_b}`;
+    if (!group.ingredientPairs.includes(pairLabel)) {
+      group.ingredientPairs.push(pairLabel);
+    }
+
+    if (
+      conflict.auto_reschedulable &&
+      conflict.separation_hours &&
+      !group.separationHours.includes(conflict.separation_hours)
+    ) {
+      group.separationHours.push(conflict.separation_hours);
+    }
+  }
+
+  return (
+    <div className="space-y-4 text-sm">
+      {hasDuplicates && (
+        <div className="space-y-2">
+          <div className="font-medium">Duplicate ingredients</div>
+          {decision.duplicates.map((duplicate, index) => (
+            <div
+              key={`${duplicate.with_medication_id}-${duplicate.ingredient}-${index}`}
+              className="rounded-xl border p-3"
+            >
+              <div className="font-medium">
+                {candidateDisplayName || "This medication"} overlaps with{" "}
+                {duplicate.with_medication_name}
+              </div>
+              <div className="mt-1 text-gray-500">{duplicate.reason}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasConflicts && (
+        <div className="space-y-2">
+          <div className="font-medium">Interaction details</div>
+
+          {Array.from(groupedConflicts.values()).map((group, index) => (
+            <div
+              key={`${group.withMedicationId}-${index}`}
+              className="rounded-xl border p-3"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium">
+                  {candidateDisplayName || "This medication"} +{" "}
+                  {group.withMedicationName}
+                </div>
+                <span className="capitalize text-gray-500">
+                  {group.severity}
+                </span>
+              </div>
+
+              {group.ingredientPairs.length > 0 && (
+                <div className="mt-1 text-gray-500">
+                  Active ingredients involved: {group.ingredientPairs.join(", ")}
+                </div>
+              )}
+
+              {group.reasons.length > 0 && (
+                <div className="mt-2">
+                  <div className="font-medium">Why</div>
+                  <div className="space-y-1 text-gray-500">
+                    {group.reasons.map((reason, reasonIndex) => (
+                      <div key={reasonIndex}>{reason}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {group.guidance.length > 0 && (
+                <div className="mt-2">
+                  <div className="font-medium">What to do</div>
+                  <div className="space-y-1 text-gray-500">
+                    {group.guidance.map((guidance, guidanceIndex) => (
+                      <div key={guidanceIndex}>{guidance}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {group.separationHours.length > 0 && (
+                <div className="mt-2 text-gray-500">
+                  Suggested separation: at least{" "}
+                  {Math.max(...group.separationHours)} hour
+                  {Math.max(...group.separationHours) === 1 ? "" : "s"}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasSuggestions && (
+        <div className="space-y-2">
+          <div className="font-medium">Schedule suggestions</div>
+          {decision.schedule_suggestions.map((suggestion, index) => (
+            <div
+              key={`${suggestion.target_medication_id}-${index}`}
+              className="rounded-xl border p-3"
+            >
+              <div className="font-medium">
+                {suggestion.target_medication_name || "Medication"}
+              </div>
+
+              <div className="mt-1 text-gray-500">{suggestion.reason}</div>
+
+              {suggestion.suggested_schedule?.times?.length ? (
+                <div className="mt-2 text-gray-500">
+                  Suggested time
+                  {suggestion.suggested_schedule.times.length > 1 ? "s" : ""}:{" "}
+                  {suggestion.suggested_schedule.times
+                    .map(formatTimeLabel)
+                    .join(", ")}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MedsPage() {
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [entryMode, setEntryMode] = useState<"photo" | "manual" | null>(null);
@@ -255,12 +452,13 @@ export default function MedsPage() {
             (decision.decision_status === "SAFE_TO_ADD"
               ? "No conflicts were found."
               : decision.decision_status === "WARNING_CONFIRM_REQUIRED"
-                ? "This medication may conflict with another one you already take."
+                ? "We found interaction warnings. Review the details below before adding."
                 : decision.decision_status ===
                     "SCHEDULE_CHANGE_CONFIRM_REQUIRED"
                   ? "A schedule adjustment is recommended before adding this medication."
                   : "We could not confidently determine whether this medication is safe.")
           }
+          details={renderDecisionDetails(decision, draft.displayName)}
           onConfirm={handleConfirmAdd}
           onCancel={() => setDecision(null)}
           confirmLabel={submitting ? "Saving..." : undefined}

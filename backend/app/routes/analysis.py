@@ -12,11 +12,14 @@ router = APIRouter()
 async def analyze_side_effects(req: ADRAnalysisRequest):
     db = get_supabase()
 
-    # Get user's current medications
-    meds_result = db.table("medications").select("*").eq("user_id", req.user_id).execute()
+    meds_result = (
+        db.table("medications")
+        .select("*")
+        .eq("user_id", req.user_id)
+        .execute()
+    )
     medications = meds_result.data or []
 
-    # Get recent medication logs (last 7 days)
     start_date = (req.date - timedelta(days=7)).isoformat()
     logs_result = (
         db.table("med_logs")
@@ -28,9 +31,16 @@ async def analyze_side_effects(req: ADRAnalysisRequest):
     )
     recent_logs = logs_result.data or []
 
-    # Pull known side effect rules to ground Gemini's analysis
+    effect_query = req.effect.strip().lower()
+    side_effect_rules = []
+
     try:
-        rules_result = db.table("side_effect_rules").select("*").execute()
+        rules_result = (
+            db.table("side_effect_rules")
+            .select("*")
+            .ilike("effect", f"%{effect_query}%")
+            .execute()
+        )
         side_effect_rules = rules_result.data or []
     except Exception:
         side_effect_rules = []

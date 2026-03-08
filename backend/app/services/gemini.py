@@ -311,18 +311,18 @@ async def analyze_adr(
     if side_effect_rules:
         rules_json = json.dumps(side_effect_rules, indent=2, default=str)
         rules_section = (
-            "\nKnown side effect rules from our database (use these to ground your analysis):\n"
+            "\nKnown side effect rules relevant to this reported effect:\n"
             f"{rules_json}\n"
         )
 
     prompt = (
-        "You are a medication safety analysis assistant. A patient reported:\n\n"
-        f"Effect: {effect}\n"
+        "You are a medication safety analysis assistant.\n\n"
+        f"Reported effect: {effect}\n"
         f"Severity: {severity}\n\n"
         f"Current medications:\n{meds_json}\n\n"
         f"Recent medication logs (last 7 days):\n{logs_json}\n"
         f"{rules_section}\n"
-        "Analyze which medications are most likely causing this side effect.\n\n"
+        "Task: determine which current medications could plausibly cause the REPORTED EFFECT.\n\n"
         "Return ONLY valid JSON (no markdown):\n"
         "{\n"
         '  "likely_culprits": [\n'
@@ -330,15 +330,17 @@ async def analyze_adr(
         '      "medication_id": "<id from medications list>",\n'
         '      "display_name": "<name>",\n'
         '      "likelihood": "high" | "possible" | "unlikely",\n'
-        '      "reason": "<brief explanation>"\n'
+        '      "reason": "<brief explanation tied specifically to the reported effect>"\n'
         "    }\n"
         "  ],\n"
         '  "warning_level": "low" | "medium" | "high"\n'
         "}\n\n"
         "Rules:\n"
-        "- Rank most to least likely.\n"
+        f'- Every "reason" MUST specifically address the reported effect: "{effect}".\n'
+        "- Do NOT mention unrelated symptoms or side effects in the reason.\n"
+        "- If none of the medications plausibly explain the reported effect, return an empty likely_culprits array.\n"
+        "- Prioritize the provided side effect rules if available.\n"
         "- Only include plausible culprits.\n"
-        "- Prioritize known side effect rules if provided.\n"
         "- Be concise. This is decision support, not a diagnosis.\n"
     )
 
