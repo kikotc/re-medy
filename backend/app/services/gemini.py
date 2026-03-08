@@ -211,12 +211,20 @@ async def autofill_from_fields(req: AutofillFieldsRequest) -> ParsedMedicationCa
         "- For display_name: keep exactly what the user typed.\n"
         "- For normalized_name: provide the generic drug name in lowercase when known.\n"
         "- For active_ingredients: list known active ingredients when known.\n"
-        "- For dosage_text: if already provided, keep it.\n"
-        "- For instructions: if already provided, keep it.\n"
+        "- For dosage_text: if already provided, keep it. Otherwise infer a common dosage only if reasonably confident.\n"
+        "- For instructions: if already provided, keep it exactly.\n"
+        "- If instructions are missing and the medication is confidently identified, suggest concise typical administration instructions.\n"
+        "- Do not leave instructions blank if the medication is confidently identified and typical instructions are commonly known.\n"
         "- For schedule: if the user already set one, keep it exactly.\n"
         f'- If no schedule was provided and no specific timing clue exists, suggest daily at {DEFAULT_MED_TIME}.\n'
         "- If a medication is commonly associated with a time of day, suggest a reasonable time.\n"
+        "- Keep instructions short and practical, not long explanations.\n"
         "- If you cannot confidently identify the medication, set needs_review=true and confidence below 0.5.\n\n"
+        "Examples of concise instructions:\n"
+        '- "take with food"\n'
+        '- "take on an empty stomach"\n'
+        '- "take in the morning on an empty stomach, 30 to 60 minutes before breakfast"\n'
+        '- "take at bedtime"\n\n'
         f"{MEDICATION_JSON_SCHEMA}"
     )
 

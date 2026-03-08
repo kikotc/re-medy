@@ -14,11 +14,7 @@ import {
   medicationDraftToCreatePayload,
   type ConflictCheckResponse,
 } from "@/lib/api";
-import {
-  emptyMedicationDraft,
-  Medication,
-  MedicationDraft,
-} from "@/lib/types";
+import { emptyMedicationDraft, Medication, MedicationDraft } from "@/lib/types";
 
 const DEMO_USER_ID = "demo-user";
 
@@ -57,7 +53,7 @@ type ParsedMedicationResponse = {
 
 function mergeParsedIntoDraft(
   base: MedicationDraft,
-  parsed: ParsedMedicationResponse
+  parsed: ParsedMedicationResponse,
 ): MedicationDraft {
   return {
     ...base,
@@ -92,7 +88,7 @@ function formatTimeLabel(time: string) {
 
 function renderDecisionDetails(
   decision: ConflictCheckResponse,
-  candidateDisplayName: string
+  candidateDisplayName: string,
 ) {
   const hasDuplicates = decision.duplicates.length > 0;
   const hasConflicts = decision.conflicts.length > 0;
@@ -133,10 +129,7 @@ function renderDecisionDetails(
     const group = groupedConflicts.get(key)!;
 
     const severityRank = { minor: 1, moderate: 2, major: 3 };
-    if (
-      severityRank[conflict.severity] >
-      severityRank[group.severity]
-    ) {
+    if (severityRank[conflict.severity] > severityRank[group.severity]) {
       group.severity = conflict.severity;
     }
 
@@ -203,7 +196,8 @@ function renderDecisionDetails(
 
               {group.ingredientPairs.length > 0 && (
                 <div className="mt-1 text-gray-500">
-                  Active ingredients involved: {group.ingredientPairs.join(", ")}
+                  Active ingredients involved:{" "}
+                  {group.ingredientPairs.join(", ")}
                 </div>
               )}
 
@@ -258,7 +252,9 @@ function renderDecisionDetails(
               {suggestion.suggested_schedule?.times?.length ? (
                 <div className="mt-2 text-gray-500">
                   Suggested time
-                  {suggestion.suggested_schedule.times.length > 1 ? "s" : ""}:{" "}
+                  {suggestion.suggested_schedule.times.length > 1
+                    ? "s"
+                    : ""}:{" "}
                   {suggestion.suggested_schedule.times
                     .map(formatTimeLabel)
                     .join(", ")}
@@ -307,7 +303,7 @@ export default function MedsPage() {
 
   const handleParsed = (
     values: Partial<MedicationDraft>,
-    suggested: SuggestedFields
+    suggested: SuggestedFields,
   ) => {
     setDraft((prev) => ({
       ...prev,
@@ -353,9 +349,7 @@ export default function MedsPage() {
           schedule: {
             recurrence_type: nextDraft.recurrenceType,
             days_of_week:
-              nextDraft.recurrenceType === "weekly"
-                ? nextDraft.daysOfWeek
-                : [],
+              nextDraft.recurrenceType === "weekly" ? nextDraft.daysOfWeek : [],
             times: nextDraft.time ? [nextDraft.time] : [],
           },
         })) as ParsedMedicationResponse;
@@ -384,7 +378,7 @@ export default function MedsPage() {
 
       const result = await checkConflicts(
         DEMO_USER_ID,
-        medicationDraftToConflictPayload(nextDraft)
+        medicationDraftToConflictPayload(nextDraft),
       );
 
       setDecision(result);
@@ -400,7 +394,7 @@ export default function MedsPage() {
 
     try {
       const saved = await createMedication(
-        medicationDraftToCreatePayload(draft, DEMO_USER_ID)
+        medicationDraftToCreatePayload(draft, DEMO_USER_ID),
       );
 
       setMedications((prev) => [saved.medication, ...prev]);
@@ -423,7 +417,7 @@ export default function MedsPage() {
       daysOfWeek: draft.daysOfWeek,
       time: draft.time,
     }),
-    [draft]
+    [draft],
   );
 
   return (
@@ -460,7 +454,11 @@ export default function MedsPage() {
           }
           details={renderDecisionDetails(decision, draft.displayName)}
           onConfirm={handleConfirmAdd}
-          onCancel={() => setDecision(null)}
+          onCancel={() => {
+            setDecision(null);
+            setShowAddPanel(false);
+            resetAddFlow();
+          }}
           confirmLabel={submitting ? "Saving..." : undefined}
         />
       )}

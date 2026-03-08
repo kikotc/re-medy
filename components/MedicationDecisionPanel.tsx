@@ -46,9 +46,14 @@ export default function MedicationDecisionPanel({
     UNCERTAIN_CONFIRM_REQUIRED: {
       title: "Not sure",
       confirmLabel: "Add Anyway",
-      cancelLabel: "Go Back",
+      cancelLabel: "Cancel",
     },
   }[status];
+
+  const saferFirst =
+    status === "WARNING_CONFIRM_REQUIRED" ||
+    status === "SCHEDULE_CHANGE_CONFIRM_REQUIRED" ||
+    status === "UNCERTAIN_CONFIRM_REQUIRED";
 
   return (
     <div className="space-y-4 rounded-2xl border p-4">
@@ -60,21 +65,44 @@ export default function MedicationDecisionPanel({
       {details && <div className="rounded-xl border p-3">{details}</div>}
 
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="rounded-full border px-4 py-2 text-sm font-medium"
-        >
-          {confirmLabel || defaults.confirmLabel}
-        </button>
+        {saferFirst ? (
+          <>
+            <button
+              type="button"
+              autoFocus
+              onClick={onCancel}
+              className="rounded-full border px-4 py-2 text-sm font-medium"
+            >
+              {cancelLabel || defaults.cancelLabel}
+            </button>
 
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-full border px-4 py-2 text-sm text-gray-500"
-        >
-          {cancelLabel || defaults.cancelLabel}
-        </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-full border px-4 py-2 text-sm text-gray-500"
+            >
+              {confirmLabel || defaults.confirmLabel}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-full border px-4 py-2 text-sm font-medium"
+            >
+              {confirmLabel || defaults.confirmLabel}
+            </button>
+
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-full border px-4 py-2 text-sm text-gray-500"
+            >
+              {cancelLabel || defaults.cancelLabel}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
