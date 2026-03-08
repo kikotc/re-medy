@@ -360,3 +360,15 @@ export function medicationDraftToCreatePayload(
     confidence: draft.confidence,
   };
 }
+
+export async function deleteMedication(
+  medicationId: string,
+  userId: string
+): Promise<{ status: string }> {
+  return fetchJSON(
+    `/medications/${encodeURIComponent(medicationId)}?user_id=${encodeURIComponent(userId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}

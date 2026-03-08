@@ -9,12 +9,17 @@ import {
   autofillFields,
   checkConflicts,
   createMedication,
+  deleteMedication,
   getMedications,
   medicationDraftToConflictPayload,
   medicationDraftToCreatePayload,
   type ConflictCheckResponse,
 } from "@/lib/api";
-import { emptyMedicationDraft, Medication, MedicationDraft } from "@/lib/types";
+import {
+  emptyMedicationDraft,
+  Medication,
+  MedicationDraft,
+} from "@/lib/types";
 
 const DEMO_USER_ID = "demo-user";
 
@@ -36,6 +41,8 @@ type VisibleFormValues = {
   time: string;
 };
 
+type SubmitAction = "autofill" | "check";
+
 type ParsedMedicationResponse = {
   display_name?: string;
   normalized_name?: string;
@@ -53,7 +60,7 @@ type ParsedMedicationResponse = {
 
 function mergeParsedIntoDraft(
   base: MedicationDraft,
-  parsed: ParsedMedicationResponse,
+  parsed: ParsedMedicationResponse
 ): MedicationDraft {
   return {
     ...base,
@@ -86,9 +93,126 @@ function formatTimeLabel(time: string) {
   return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
+function getCandidateScheduleSuggestion(decision: ConflictCheckResponse) {
+  return decision.schedule_suggestions.find(
+    (suggestion) =>
+      suggestion.is_candidate !== false &&
+      suggestion.allowed !== false &&
+      suggestion.suggested_schedule
+  );
+}
+
+function canUseSuggestedSchedule(decision: ConflictCheckResponse) {
+  const candidateSuggestion = getCandidateScheduleSuggestion(decision);
+
+  if (!candidateSuggestion) {
+    return false;
+  }
+
+  if (decision.duplicates.length > 0) {
+    return false;
+  }
+
+  return true;
+}
+
+function getDecisionPresentation(decision: ConflictCheckResponse) {
+  const schedulableTimingCase = canUseSuggestedSchedule(decision);
+
+  const hasMajor = decision.conflicts.some(
+    (conflict) => conflict.severity === "major"
+  );
+
+  const hasTimingConflict =
+    decision.conflicts.some(
+      (conflict) =>
+        !!conflict.auto_reschedulable || !!conflict.separation_hours
+    ) || decision.schedule_suggestions.length > 0;
+
+  const hasDuplicates = decision.duplicates.length > 0;
+  const hasConflicts = decision.conflicts.length > 0;
+
+  if (schedulableTimingCase) {
+    return {
+      title: "Timing conflict",
+      message:
+        "This interaction can likely be handled by adjusting the schedule. Review the suggested timing below.",
+      cancelFirst: false,
+    };
+  }
+
+  if (hasMajor) {
+    return {
+      title: "Major interaction warning",
+      message:
+        "A major medication interaction was found. Review the details below before adding.",
+      cancelFirst: true,
+    };
+  }
+
+  if (hasTimingConflict) {
+    return {
+      title: "Timing conflict",
+      message:
+        "This looks like a timing-related conflict. Review the schedule guidance below before adding.",
+      cancelFirst: false,
+    };
+  }
+
+  if (hasDuplicates) {
+    return {
+      title: "Duplicate ingredient warning",
+      message:
+        "A possible duplicate ingredient was found. Review the details below before adding.",
+      cancelFirst: false,
+    };
+  }
+
+  if (hasConflicts) {
+    return {
+      title: "Interaction warning",
+      message:
+        "A medication interaction was found. Review the details below before adding.",
+      cancelFirst: false,
+    };
+  }
+
+  return {
+    title: "Ready to add",
+    message: "No conflicts were found.",
+    cancelFirst: false,
+  };
+}
+
+function getConfirmButtonLabel(
+  decision: ConflictCheckResponse | null,
+  submitting: boolean
+) {
+  if (submitting) return "Saving...";
+
+  if (!decision) return undefined;
+
+  if (canUseSuggestedSchedule(decision)) {
+    return "Use Suggested Schedule";
+  }
+
+  if (decision.decision_status === "SCHEDULE_CHANGE_CONFIRM_REQUIRED") {
+    return "Use Suggested Schedule";
+  }
+
+  if (
+    decision.decision_status === "WARNING_CONFIRM_REQUIRED" ||
+    decision.decision_status === "UNCERTAIN_CONFIRM_REQUIRED"
+  ) {
+    return "Add Anyway";
+  }
+
+  return undefined;
+}
+
 function renderDecisionDetails(
   decision: ConflictCheckResponse,
-  candidateDisplayName: string,
+  candidateDisplayName: string
 ) {
   const hasDuplicates = decision.duplicates.length > 0;
   const hasConflicts = decision.conflicts.length > 0;
@@ -196,8 +320,7 @@ function renderDecisionDetails(
 
               {group.ingredientPairs.length > 0 && (
                 <div className="mt-1 text-gray-500">
-                  Active ingredients involved:{" "}
-                  {group.ingredientPairs.join(", ")}
+                  Active ingredients involved: {group.ingredientPairs.join(", ")}
                 </div>
               )}
 
@@ -252,9 +375,7 @@ function renderDecisionDetails(
               {suggestion.suggested_schedule?.times?.length ? (
                 <div className="mt-2 text-gray-500">
                   Suggested time
-                  {suggestion.suggested_schedule.times.length > 1
-                    ? "s"
-                    : ""}:{" "}
+                  {suggestion.suggested_schedule.times.length > 1 ? "s" : ""}:{" "}
                   {suggestion.suggested_schedule.times
                     .map(formatTimeLabel)
                     .join(", ")}
@@ -278,6 +399,7 @@ export default function MedsPage() {
   const [loadingMeds, setLoadingMeds] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formSeed, setFormSeed] = useState(0);
+  const [deletingMedicationId, setDeletingMedicationId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadMedications() {
@@ -303,7 +425,7 @@ export default function MedsPage() {
 
   const handleParsed = (
     values: Partial<MedicationDraft>,
-    suggested: SuggestedFields,
+    suggested: SuggestedFields
   ) => {
     setDraft((prev) => ({
       ...prev,
@@ -315,7 +437,10 @@ export default function MedsPage() {
     setFormSeed((prev) => prev + 1);
   };
 
-  const handleManualSubmit = async (values: VisibleFormValues) => {
+  const handleManualSubmit = async (
+    values: VisibleFormValues,
+    action: SubmitAction
+  ) => {
     let nextDraft: MedicationDraft = {
       ...draft,
       displayName: values.displayName,
@@ -335,13 +460,7 @@ export default function MedsPage() {
     setSubmitting(true);
 
     try {
-      const shouldAutofill =
-        !nextDraft.normalizedName ||
-        nextDraft.activeIngredients.length === 0 ||
-        !nextDraft.dosageText.trim() ||
-        !nextDraft.instructions.trim();
-
-      if (shouldAutofill) {
+      if (action === "autofill") {
         const autofill = (await autofillFields({
           display_name: nextDraft.displayName,
           dosage_text: nextDraft.dosageText,
@@ -349,7 +468,9 @@ export default function MedsPage() {
           schedule: {
             recurrence_type: nextDraft.recurrenceType,
             days_of_week:
-              nextDraft.recurrenceType === "weekly" ? nextDraft.daysOfWeek : [],
+              nextDraft.recurrenceType === "weekly"
+                ? nextDraft.daysOfWeek
+                : [],
             times: nextDraft.time ? [nextDraft.time] : [],
           },
         })) as ParsedMedicationResponse;
@@ -372,13 +493,14 @@ export default function MedsPage() {
           time: !!autofill.schedule?.times?.length,
         });
         setFormSeed((prev) => prev + 1);
-      } else {
-        setDraft(nextDraft);
+        return;
       }
+
+      setDraft(nextDraft);
 
       const result = await checkConflicts(
         DEMO_USER_ID,
-        medicationDraftToConflictPayload(nextDraft),
+        medicationDraftToConflictPayload(nextDraft)
       );
 
       setDecision(result);
@@ -393,8 +515,28 @@ export default function MedsPage() {
     setSubmitting(true);
 
     try {
+      let finalDraft = draft;
+      const candidateSuggestion = decision
+        ? getCandidateScheduleSuggestion(decision)
+        : undefined;
+
+      if (candidateSuggestion?.suggested_schedule) {
+        finalDraft = {
+          ...draft,
+          recurrenceType:
+            candidateSuggestion.suggested_schedule.recurrence_type ||
+            draft.recurrenceType,
+          daysOfWeek:
+            candidateSuggestion.suggested_schedule.days_of_week || [],
+          time:
+            candidateSuggestion.suggested_schedule.times?.[0] || draft.time,
+        };
+
+        setDraft(finalDraft);
+      }
+
       const saved = await createMedication(
-        medicationDraftToCreatePayload(draft, DEMO_USER_ID),
+        medicationDraftToCreatePayload(finalDraft, DEMO_USER_ID)
       );
 
       setMedications((prev) => [saved.medication, ...prev]);
@@ -408,6 +550,19 @@ export default function MedsPage() {
     }
   };
 
+  const handleDeleteMedication = async (medicationId: string) => {
+    setDeletingMedicationId(medicationId);
+
+    try {
+      await deleteMedication(medicationId, DEMO_USER_ID);
+      setMedications((prev) => prev.filter((med) => med.id !== medicationId));
+    } catch (error) {
+      console.error("Failed to delete medication:", error);
+    } finally {
+      setDeletingMedicationId(null);
+    }
+  };
+
   const formInitialValues = useMemo(
     () => ({
       displayName: draft.displayName,
@@ -417,8 +572,12 @@ export default function MedsPage() {
       daysOfWeek: draft.daysOfWeek,
       time: draft.time,
     }),
-    [draft],
+    [draft]
   );
+
+  const decisionPresentation = decision
+    ? getDecisionPresentation(decision)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -438,28 +597,20 @@ export default function MedsPage() {
         </button>
       </div>
 
-      {decision && (
+      {decision && decisionPresentation && (
         <MedicationDecisionPanel
           status={decision.decision_status}
-          message={
-            decision.message ||
-            (decision.decision_status === "SAFE_TO_ADD"
-              ? "No conflicts were found."
-              : decision.decision_status === "WARNING_CONFIRM_REQUIRED"
-                ? "We found interaction warnings. Review the details below before adding."
-                : decision.decision_status ===
-                    "SCHEDULE_CHANGE_CONFIRM_REQUIRED"
-                  ? "A schedule adjustment is recommended before adding this medication."
-                  : "We could not confidently determine whether this medication is safe.")
-          }
+          title={decisionPresentation.title}
+          message={decision.message || decisionPresentation.message}
           details={renderDecisionDetails(decision, draft.displayName)}
+          cancelFirst={decisionPresentation.cancelFirst}
           onConfirm={handleConfirmAdd}
           onCancel={() => {
             setDecision(null);
             setShowAddPanel(false);
             resetAddFlow();
           }}
-          confirmLabel={submitting ? "Saving..." : undefined}
+          confirmLabel={getConfirmButtonLabel(decision, submitting)}
         />
       )}
 
@@ -566,7 +717,14 @@ export default function MedsPage() {
             No medications added yet.
           </div>
         ) : (
-          medications.map((med) => <MedicationCard key={med.id} med={med} />)
+          medications.map((med) => (
+            <MedicationCard
+              key={med.id}
+              med={med}
+              onDelete={() => handleDeleteMedication(med.id)}
+              deleting={deletingMedicationId === med.id}
+            />
+          ))
         )}
       </div>
     </div>

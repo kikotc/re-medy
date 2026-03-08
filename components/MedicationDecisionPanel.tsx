@@ -15,6 +15,7 @@ type DecisionPanelProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   details?: React.ReactNode;
+  cancelFirst?: boolean;
 };
 
 export default function MedicationDecisionPanel({
@@ -26,6 +27,7 @@ export default function MedicationDecisionPanel({
   confirmLabel,
   cancelLabel,
   details,
+  cancelFirst = false,
 }: DecisionPanelProps) {
   const defaults = {
     SAFE_TO_ADD: {
@@ -50,11 +52,6 @@ export default function MedicationDecisionPanel({
     },
   }[status];
 
-  const saferFirst =
-    status === "WARNING_CONFIRM_REQUIRED" ||
-    status === "SCHEDULE_CHANGE_CONFIRM_REQUIRED" ||
-    status === "UNCERTAIN_CONFIRM_REQUIRED";
-
   return (
     <div className="space-y-4 rounded-2xl border p-4">
       <div className="space-y-1">
@@ -65,7 +62,7 @@ export default function MedicationDecisionPanel({
       {details && <div className="rounded-xl border p-3">{details}</div>}
 
       <div className="flex gap-2">
-        {saferFirst ? (
+        {cancelFirst ? (
           <>
             <button
               type="button"

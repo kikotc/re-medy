@@ -1,41 +1,65 @@
+"use client";
+
 import { Medication } from "@/lib/types";
 
-function formatRecurrence(med: Medication) {
-  if (med.schedule.recurrence_type === "daily") {
-    return "Daily";
-  }
+type MedicationCardProps = {
+  med: Medication;
+  onDelete?: () => void;
+  deleting?: boolean;
+};
 
-  return `Weekly · ${med.schedule.days_of_week
-    .map((day) => day.slice(0, 3))
-    .join(", ")}`;
+function formatTime(time: string) {
+  if (!time) return "";
+  return time;
 }
 
-function formatTimes(times: string[]) {
-  return times.join(", ");
-}
+export default function MedicationCard({
+  med,
+  onDelete,
+  deleting = false,
+}: MedicationCardProps) {
+  const times = med.schedule?.times || [];
 
-export default function MedicationCard({ med }: { med: Medication }) {
   return (
     <div className="rounded-2xl border p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-medium">{med.display_name}</div>
-          <div className="text-sm text-gray-500">{med.dosage_text}</div>
+          <h3 className="text-xl font-semibold">{med.display_name}</h3>
+          {med.dosage_text && (
+            <p className="text-sm text-gray-500">{med.dosage_text}</p>
+          )}
         </div>
 
-        <span className="rounded-full border px-2 py-1 text-xs text-gray-500">
-          {formatRecurrence(med)}
-        </span>
+        <div className="rounded-full border px-3 py-1 text-sm">
+          {med.schedule?.recurrence_type === "weekly" ? "Weekly" : "Daily"}
+        </div>
       </div>
 
       {med.instructions && (
-        <div className="mt-3 text-sm text-gray-500">{med.instructions}</div>
+        <p className="mt-4 text-gray-500">{med.instructions}</p>
       )}
 
-      <div className="mt-3 text-sm">
-        <span className="text-gray-500">Time</span>
-        <div className="mt-1 font-medium">{formatTimes(med.schedule.times)}</div>
-      </div>
+      {times.length > 0 && (
+        <div className="mt-4">
+          <div className="text-gray-500">Time</div>
+          <div className="mt-1 font-medium">
+            {times.map(formatTime).join(", ")}
+          </div>
+        </div>
+      )}
+
+      {onDelete && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className="rounded-full border px-4 py-2 text-sm text-gray-500 disabled:opacity-60"
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

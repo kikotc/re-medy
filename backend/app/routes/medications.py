@@ -107,3 +107,20 @@ async def get_medications(user_id: str):
     db = get_supabase()
     result = db.table("medications").select("*").eq("user_id", user_id).execute()
     return [_row_to_medication(r) for r in result.data]
+
+@router.delete("/medications/{medication_id}")
+async def delete_medication(medication_id: str, user_id: str):
+    db = get_supabase()
+
+    try:
+        db.table("med_logs").delete().eq("medication_id", medication_id).eq("user_id", user_id).execute()
+        result = db.table("medications").delete().eq("id", medication_id).eq("user_id", user_id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Medication not found")
+
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete medication: {e}")
