@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getWeeklySchedule } from "@/lib/api";
-import { ScheduleItem, WeeklyScheduleResponse } from "@/lib/types";
+import { getMonthlySchedule } from "@/lib/api";
+import { MonthlyScheduleResponse, ScheduleItem } from "@/lib/types";
 
 type CalendarDay = {
   date: string;
@@ -13,7 +13,8 @@ type CalendarDay = {
 
 const weekDayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function formatMonthTitle(date: Date) {
+function formatMonthTitle(year: number, month: number) {
+  const date = new Date(year, month - 1, 1);
   return date.toLocaleString("en-US", {
     month: "long",
     year: "numeric",
@@ -30,42 +31,65 @@ function formatSelectedDay(dateString: string) {
 }
 
 export default function SchedulePage() {
-  const [schedule, setSchedule] = useState<WeeklyScheduleResponse | null>(null);
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1); // 1-indexed
+  const [schedule, setSchedule] = useState<MonthlyScheduleResponse | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
     async function loadSchedule() {
-      const data = await getWeeklySchedule();
-      setSchedule(data);
+      setLoading(true);
+      try {
+        const data = await getMonthlySchedule(year, month);
+        setSchedule(data);
 
-      const firstDateWithItems =
-        data.days.find((day) => day.items.length > 0)?.date ??
-        data.days[0]?.date ??
-        "";
-      setSelectedDate(firstDateWithItems);
-
-      setLoading(false);
+        const firstDateWithItems =
+          data.days.find((day) => day.items.length > 0)?.date ??
+          data.days[0]?.date ??
+          "";
+        setSelectedDate(firstDateWithItems);
+      } catch (err) {
+        console.error("Failed to load schedule:", err);
+      } finally {
+        setLoading(false);
+      }
     }
 
     loadSchedule();
-  }, []);
+  }, [year, month]);
 
-  const { monthTitle, calendarDays, selectedItems } = useMemo(() => {
+  const goToPrevMonth = () => {
+    if (month === 1) {
+      setYear(year - 1);
+      setMonth(12);
+    } else {
+      setMonth(month - 1);
+    }
+  };
+
+  const goToNextMonth = () => {
+    if (month === 12) {
+      setYear(year + 1);
+      setMonth(1);
+    } else {
+      setMonth(month + 1);
+    }
+  };
+
+  const { calendarDays, selectedItems } = useMemo(() => {
     if (!schedule) {
       return {
-        monthTitle: "",
         calendarDays: [] as CalendarDay[],
         selectedItems: [] as ScheduleItem[],
       };
     }
 
-    const baseDate = new Date(`${schedule.week_start}T00:00:00`);
-    const year = baseDate.getFullYear();
-    const month = baseDate.getMonth();
-
-    const firstOfMonth = new Date(year, month, 1);
-    const lastOfMonth = new Date(year, month + 1, 0);
+    const firstOfMonth = new Date(year, month - 1, 1);
+    const lastOfMonth = new Date(year, month, 0);
 
     const itemsByDate = new Map<string, ScheduleItem[]>();
     for (const day of schedule.days) {
@@ -79,10 +103,11 @@ export default function SchedulePage() {
 
     const days: CalendarDay[] = [];
 
-    const leadingEmptyDays = firstOfMonth.getDay();
-    for (let i = 0; i < leadingEmptyDays; i++) {
+    // Pad start of month
+    const startDow = firstOfMonth.getDay();
+    for (let i = 0; i < startDow; i++) {
       days.push({
-        date: `empty-${i}`,
+        date: `pad-start-${i}`,
         dayNumber: 0,
         isCurrentMonth: false,
         items: [],
@@ -90,7 +115,7 @@ export default function SchedulePage() {
     }
 
     for (let day = 1; day <= lastOfMonth.getDate(); day++) {
-      const date = new Date(year, month, day);
+      const date = new Date(year, month - 1, day);
       const isoDate = date.toISOString().slice(0, 10);
 
       days.push({
@@ -106,11 +131,10 @@ export default function SchedulePage() {
     );
 
     return {
-      monthTitle: formatMonthTitle(firstOfMonth),
       calendarDays: days,
       selectedItems: selected?.items ?? [],
     };
-  }, [schedule, selectedDate]);
+  }, [schedule, selectedDate, year, month]);
 
   if (loading) {
     return <div className="text-sm text-gray-500">Loading...</div>;
@@ -134,7 +158,25 @@ export default function SchedulePage() {
       </div>
 
       <div className="rounded-3xl border border-white/15 p-4 md:p-6">
-        <div className="mb-4 text-2xl font-semibold">{monthTitle}</div>
+        <div className="mb-4 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={goToPrevMonth}
+            className="rounded-full border px-3 py-1 text-sm"
+          >
+            ←
+          </button>
+          <div className="text-2xl font-semibold">
+            {formatMonthTitle(year, month)}
+          </div>
+          <button
+            type="button"
+            onClick={goToNextMonth}
+            className="rounded-full border px-3 py-1 text-sm"
+          >
+            →
+          </button>
+        </div>
 
         <div className="mb-2 grid grid-cols-7 gap-2 text-center text-xs text-gray-500">
           {weekDayLabels.map((label) => (

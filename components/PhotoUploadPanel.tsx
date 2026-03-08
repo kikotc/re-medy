@@ -1,22 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ActiveIngredient } from "@/lib/types";
-
-type ParsedPhotoDraft = {
-  displayName?: string;
-  dosageText?: string;
-  instructions?: string;
-  recurrenceType?: "daily" | "weekly";
-  daysOfWeek?: string[];
-  time?: string;
-
-  normalizedName?: string;
-  activeIngredients?: ActiveIngredient[];
-  needsReview?: boolean;
-  confidence?: number;
-  source?: "photo";
-};
+import { parseMedicationPhoto } from "@/lib/api";
+import { ActiveIngredient, MedicationDraft } from "@/lib/types";
 
 type SuggestionFlags = {
   displayName?: boolean;
@@ -28,7 +14,7 @@ type SuggestionFlags = {
 };
 
 type PhotoUploadPanelProps = {
-  onParsed?: (values: ParsedPhotoDraft, suggested: SuggestionFlags) => void;
+  onParsed?: (values: Partial<MedicationDraft>, suggested: SuggestionFlags) => void;
 };
 
 export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
@@ -38,10 +24,12 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
   const streamRef = useRef<MediaStream | null>(null);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraSupported, setCameraSupported] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [isParsing, setIsParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
 
   useEffect(() => {
     setCameraSupported(
@@ -66,20 +54,22 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
     fileInputRef.current?.click();
   };
 
-  const setPreview = (url: string) => {
+  const setPreview = (url: string, file?: File) => {
     setPreviewUrl((prev) => {
       if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
       return url;
     });
+    if (file) setImageFile(file);
     setShowCamera(false);
     stopCamera();
+    setParseError("");
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
-    setPreview(url);
+    setPreview(url, file);
   };
 
   const startCamera = async () => {
@@ -116,40 +106,56 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/png");
-    setPreview(dataUrl);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], "capture.png", { type: "image/png" });
+      const dataUrl = canvas.toDataURL("image/png");
+      setPreview(dataUrl, file);
+    }, "image/png");
   };
 
   const handleParse = async () => {
+    if (!imageFile) return;
+
     setIsParsing(true);
+    setParseError("");
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    try {
+      const parsed = await parseMedicationPhoto(imageFile);
 
-    onParsed?.(
-      {
-        displayName: "Tylenol",
-        dosageText: "500 mg",
-        instructions: "Take as needed",
-        recurrenceType: "daily",
-        daysOfWeek: [],
-        time: "09:00",
-
-        normalizedName: "acetaminophen",
-        activeIngredients: [{ name: "acetaminophen", strength: "500 mg" }],
-        needsReview: false,
-        confidence: 0.92,
-        source: "photo",
-      },
-      {
+      // Build suggestion flags — mark all AI-filled fields as suggested
+      const suggested: SuggestionFlags = {
         displayName: true,
-        dosageText: true,
-        instructions: true,
+        dosageText: !!parsed.dosage_text,
+        instructions: !!parsed.instructions,
         recurrenceType: true,
-        time: true,
-      }
-    );
+        time: parsed.schedule.times.length > 0,
+      };
 
-    setIsParsing(false);
+      onParsed?.(
+        {
+          displayName: parsed.display_name,
+          dosageText: parsed.dosage_text,
+          instructions: parsed.instructions,
+          recurrenceType: parsed.schedule.recurrence_type,
+          daysOfWeek: parsed.schedule.days_of_week,
+          time: parsed.schedule.times[0] || "",
+
+          normalizedName: parsed.normalized_name,
+          activeIngredients: parsed.active_ingredients,
+          needsReview: parsed.needs_review,
+          confidence: parsed.confidence,
+          source: "photo",
+        },
+        suggested
+      );
+    } catch (err) {
+      console.error("Photo parse failed:", err);
+      setParseError("Could not analyze the photo. Try uploading a clearer image.");
+    } finally {
+      setIsParsing(false);
+    }
   };
 
   return (
@@ -230,6 +236,10 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
             className="w-full rounded-2xl border object-cover"
           />
 
+          {parseError && (
+            <p className="text-sm text-red-500">{parseError}</p>
+          )}
+
           <div className="flex gap-2">
             <button
               type="button"
@@ -245,6 +255,8 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
               onClick={() => {
                 if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
                 setPreviewUrl(null);
+                setImageFile(null);
+                setParseError("");
               }}
               className="rounded-full border px-4 py-2 text-sm font-medium"
             >

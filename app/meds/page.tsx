@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AddMedicationForm from "@/components/AddMedicationForm";
 import MedicationCard from "@/components/MedicationCard";
 import MedicationDecisionPanel from "@/components/MedicationDecisionPanel";
 import PhotoUploadPanel from "@/components/PhotoUploadPanel";
 import {
+  checkConflicts,
+  createMedication,
+  getMedications,
   medicationDraftToConflictPayload,
   medicationDraftToCreatePayload,
 } from "@/lib/api";
-import { mockMedications } from "@/lib/mockData";
 import {
+  ConflictCheckResponse,
+  ConflictDecisionStatus,
   emptyMedicationDraft,
   Medication,
   MedicationDraft,
@@ -39,43 +43,35 @@ export default function MedsPage() {
   const [entryMode, setEntryMode] = useState<"photo" | "manual" | null>(null);
   const [draft, setDraft] = useState<MedicationDraft>(emptyMedicationDraft);
   const [suggestedFields, setSuggestedFields] = useState<SuggestedFields>({});
-  const [mockDecisionStatus, setMockDecisionStatus] = useState<
-    | "SAFE_TO_ADD"
-    | "WARNING_CONFIRM_REQUIRED"
-    | "SCHEDULE_CHANGE_CONFIRM_REQUIRED"
-    | "UNCERTAIN_CONFIRM_REQUIRED"
-    | null
-  >(null);
-  const [medications, setMedications] = useState<Medication[]>(mockMedications);
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Conflict check result
+  const [conflictResult, setConflictResult] =
+    useState<ConflictCheckResponse | null>(null);
+
+  // Load medications on mount
+  useEffect(() => {
+    async function load() {
+      try {
+        const meds = await getMedications();
+        setMedications(meds);
+      } catch (err) {
+        console.error("Failed to load medications:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   const resetAddFlow = () => {
     setEntryMode(null);
     setDraft(emptyMedicationDraft);
     setSuggestedFields({});
-  };
-
-  const draftToMedication = (currentDraft: MedicationDraft): Medication => {
-    const now = new Date().toISOString();
-
-    return {
-      id: `med_${Date.now()}`,
-      user_id: "demo-user",
-      display_name: currentDraft.displayName,
-      normalized_name:
-        currentDraft.normalizedName || currentDraft.displayName.toLowerCase(),
-      active_ingredients: currentDraft.activeIngredients,
-      dosage_text: currentDraft.dosageText,
-      instructions: currentDraft.instructions,
-      start_date: now.slice(0, 10),
-      source: currentDraft.source,
-      schedule: {
-        recurrence_type: currentDraft.recurrenceType,
-        days_of_week:
-          currentDraft.recurrenceType === "weekly" ? currentDraft.daysOfWeek : [],
-        times: currentDraft.time ? [currentDraft.time] : [],
-      },
-      created_at: now,
-    };
+    setConflictResult(null);
   };
 
   const handleParsed = (
@@ -87,25 +83,21 @@ export default function MedsPage() {
       ...values,
       source: "photo",
     }));
-
     setSuggestedFields(suggested);
     setEntryMode("manual");
   };
 
-  const handleManualSubmit = (values: VisibleFormValues) => {
+  const handleManualSubmit = async (values: VisibleFormValues) => {
     const nextDraft: MedicationDraft = {
       ...draft,
-
       displayName: values.displayName,
       dosageText: values.dosageText,
       instructions: values.instructions,
       recurrenceType: values.recurrenceType,
       daysOfWeek: values.daysOfWeek,
       time: values.time,
-
       normalizedName:
         draft.normalizedName || values.displayName.trim().toLowerCase(),
-
       activeIngredients: draft.activeIngredients,
       needsReview: draft.needsReview,
       confidence: draft.confidence,
@@ -113,17 +105,81 @@ export default function MedsPage() {
     };
 
     setDraft(nextDraft);
+    setChecking(true);
 
-    console.log(
-      "conflict payload:",
-      medicationDraftToConflictPayload(nextDraft)
-    );
-    console.log(
-      "create payload:",
-      medicationDraftToCreatePayload(nextDraft, "demo-user")
-    );
+    try {
+      const payload = medicationDraftToConflictPayload(nextDraft);
+      const result = await checkConflicts(payload);
 
-    setMockDecisionStatus("WARNING_CONFIRM_REQUIRED");
+      // Update draft with normalized data from backend
+      if (result.normalized_name) {
+        nextDraft.normalizedName = result.normalized_name;
+      }
+      if (result.active_ingredients && result.active_ingredients.length > 0) {
+        nextDraft.activeIngredients = result.active_ingredients;
+      }
+      setDraft(nextDraft);
+
+      if (result.decision_status === "SAFE_TO_ADD") {
+        // Auto-save if no issues
+        await saveMedication(nextDraft);
+      } else {
+        // Show decision panel
+        setConflictResult(result);
+      }
+    } catch (err) {
+      console.error("Conflict check failed:", err);
+      // Show as uncertain so user can still proceed
+      setConflictResult({
+        decision_status: "UNCERTAIN_CONFIRM_REQUIRED",
+        duplicates: [],
+        conflicts: [],
+        schedule_suggestions: [],
+        uncertainty_message:
+          "Could not check for conflicts. You may still add this medication.",
+        normalized_name: nextDraft.normalizedName,
+        active_ingredients: nextDraft.activeIngredients,
+      });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const saveMedication = async (currentDraft: MedicationDraft) => {
+    setSaving(true);
+    try {
+      const payload = medicationDraftToCreatePayload(currentDraft, "demo-user");
+      const response = await createMedication(payload);
+      setMedications((prev) => [response.medication, ...prev]);
+      setShowAddPanel(false);
+      resetAddFlow();
+    } catch (err) {
+      console.error("Save failed:", err);
+      alert("Failed to save medication. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    await saveMedication(draft);
+    setConflictResult(null);
+  };
+
+  const handleCancel = () => {
+    setConflictResult(null);
+  };
+
+  const decisionMessage = (status: ConflictDecisionStatus, result: ConflictCheckResponse): string => {
+    if (status === "SAFE_TO_ADD") return "No conflicts were found.";
+    if (status === "UNCERTAIN_CONFIRM_REQUIRED")
+      return result.uncertainty_message || "We could not confidently determine whether this medication is safe.";
+    if (status === "SCHEDULE_CHANGE_CONFIRM_REQUIRED")
+      return "A schedule adjustment is recommended before adding this medication.";
+    // WARNING_CONFIRM_REQUIRED
+    const reasons = result.conflicts.map((c) => c.reason);
+    const dupReasons = result.duplicates.map((d) => d.reason);
+    return [...reasons, ...dupReasons].join(" ") || "This medication may conflict with another one you already take.";
   };
 
   const formInitialValues = {
@@ -144,7 +200,6 @@ export default function MedsPage() {
             setShowAddPanel((prev) => !prev);
             if (showAddPanel) {
               resetAddFlow();
-              setMockDecisionStatus(null);
             }
           }}
           className="rounded-full border px-4 py-2 text-sm font-medium"
@@ -153,36 +208,34 @@ export default function MedsPage() {
         </button>
       </div>
 
-      {mockDecisionStatus && (
+      {conflictResult && (
         <MedicationDecisionPanel
-          status={mockDecisionStatus}
-          message={
-            mockDecisionStatus === "SAFE_TO_ADD"
-              ? "No conflicts were found."
-              : mockDecisionStatus === "WARNING_CONFIRM_REQUIRED"
-                ? "This medication may conflict with another one you already take."
-                : mockDecisionStatus ===
-                    "SCHEDULE_CHANGE_CONFIRM_REQUIRED"
-                  ? "A schedule adjustment is recommended before adding this medication."
-                  : "We could not confidently determine whether this medication is safe."
+          status={conflictResult.decision_status}
+          message={decisionMessage(conflictResult.decision_status, conflictResult)}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+          details={
+            conflictResult.conflicts.length > 0 ? (
+              <div className="space-y-2 text-sm">
+                {conflictResult.conflicts.map((c, i) => (
+                  <div key={i}>
+                    <span className="font-medium capitalize">{c.severity}:</span>{" "}
+                    {c.ingredient_a} + {c.ingredient_b} — {c.guidance}
+                  </div>
+                ))}
+              </div>
+            ) : undefined
           }
-          onConfirm={() => {
-            const newMedication = draftToMedication(draft);
-            setMedications((prev) => [newMedication, ...prev]);
-            setMockDecisionStatus(null);
-            setShowAddPanel(false);
-            resetAddFlow();
-          }}
-          onCancel={() => {
-            console.log("cancelled");
-            setMockDecisionStatus(null);
-          }}
         />
       )}
 
       {showAddPanel && (
         <div
-          className={mockDecisionStatus ? "pointer-events-none opacity-50" : ""}
+          className={
+            conflictResult || checking || saving
+              ? "pointer-events-none opacity-50"
+              : ""
+          }
         >
           <>
             <div className="space-y-3 rounded-2xl border p-4 md:hidden">
@@ -271,11 +324,20 @@ export default function MedsPage() {
         </div>
       )}
 
-      <div className="space-y-3">
-        {medications.map((med) => (
-          <MedicationCard key={med.id} med={med} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading medications...</div>
+      ) : (
+        <div className="space-y-3">
+          {medications.map((med) => (
+            <MedicationCard key={med.id} med={med} />
+          ))}
+          {medications.length === 0 && (
+            <div className="rounded-2xl border p-4 text-sm text-gray-500">
+              No medications added yet.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

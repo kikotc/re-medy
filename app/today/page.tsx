@@ -8,31 +8,57 @@ export default function TodayPage() {
   const [items, setItems] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+
   useEffect(() => {
     async function loadToday() {
-      const data = await getTodaySchedule();
-
-      const sorted = [...data].sort((a, b) =>
-        a.scheduled_time.localeCompare(b.scheduled_time)
-      );
-
-      setItems(sorted);
-      setLoading(false);
+      try {
+        const data = await getTodaySchedule(todayStr);
+        const sorted = [...data].sort((a, b) =>
+          a.scheduled_time.localeCompare(b.scheduled_time)
+        );
+        setItems(sorted);
+      } catch (err) {
+        console.error("Failed to load today's schedule:", err);
+      } finally {
+        setLoading(false);
+      }
     }
 
     loadToday();
-  }, []);
+  }, [todayStr]);
 
-  const handleToggleTaken = async (scheduleItemId: string) => {
+  const handleToggleTaken = async (item: ScheduleItem) => {
+    const newTaken = !item.taken;
+
+    // Optimistic update
     setItems((prev) =>
-      prev.map((item) =>
-        item.schedule_item_id === scheduleItemId
-          ? { ...item, taken: !item.taken }
-          : item
+      prev.map((i) =>
+        i.schedule_item_id === item.schedule_item_id
+          ? { ...i, taken: newTaken }
+          : i
       )
     );
 
-    await logMedicationTaken();
+    try {
+      await logMedicationTaken({
+        user_id: "demo-user",
+        medication_id: item.medication_id,
+        date: item.date,
+        scheduled_time: item.scheduled_time,
+        taken: newTaken,
+      });
+    } catch (err) {
+      console.error("Failed to log medication:", err);
+      // Revert on failure
+      setItems((prev) =>
+        prev.map((i) =>
+          i.schedule_item_id === item.schedule_item_id
+            ? { ...i, taken: !newTaken }
+            : i
+        )
+      );
+    }
   };
 
   return (
@@ -71,7 +97,7 @@ export default function TodayPage() {
                 <input
                   type="checkbox"
                   checked={item.taken}
-                  onChange={() => handleToggleTaken(item.schedule_item_id)}
+                  onChange={() => handleToggleTaken(item)}
                   className="h-5 w-5 accent-white"
                 />
               </div>

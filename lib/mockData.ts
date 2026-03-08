@@ -1,7 +1,9 @@
 import {
   ADRAnalysisResponse,
+  ConflictCheckResponse,
   Medication,
   MedicationCreateResponse,
+  MonthlyScheduleResponse,
   WeeklyScheduleResponse,
 } from "./types";
 
@@ -46,6 +48,11 @@ export const mockMedications: Medication[] = [
 
 export const mockCreateMedicationResponse: MedicationCreateResponse = {
   medication: mockMedications[0],
+  status: "saved",
+};
+
+export const mockConflictCheckResponse: ConflictCheckResponse = {
+  decision_status: "WARNING_CONFIRM_REQUIRED",
   duplicates: [],
   conflicts: [
     {
@@ -62,7 +69,9 @@ export const mockCreateMedicationResponse: MedicationCreateResponse = {
     },
   ],
   schedule_suggestions: [],
-  status: "saved_with_warnings",
+  uncertainty_message: null,
+  normalized_name: "ibuprofen",
+  active_ingredients: [{ name: "ibuprofen", strength: "200 mg" }],
 };
 
 export const mockWeeklySchedule: WeeklyScheduleResponse = {

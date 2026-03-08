@@ -15,17 +15,30 @@ export default function SymptomsPage() {
     e.preventDefault();
     setLoading(true);
 
-    await logSideEffect({
-      user_id: "demo-user",
-      effect,
-      severity,
-      date: new Date().toISOString().slice(0, 10),
-      notes,
-    });
+    const todayStr = new Date().toISOString().slice(0, 10);
 
-    const analysis = await analyzeSideEffect();
-    setResult(analysis);
-    setLoading(false);
+    try {
+      await logSideEffect({
+        user_id: "demo-user",
+        effect,
+        severity,
+        date: todayStr,
+        notes,
+      });
+
+      const analysis = await analyzeSideEffect({
+        user_id: "demo-user",
+        effect,
+        severity,
+        date: todayStr,
+      });
+
+      setResult(analysis);
+    } catch (err) {
+      console.error("Analysis failed:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

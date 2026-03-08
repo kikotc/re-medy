@@ -5,6 +5,12 @@ export type SymptomSeverity = "mild" | "moderate" | "severe";
 export type Likelihood = "high" | "possible" | "unlikely";
 export type MedicationSource = "photo" | "text" | "manual";
 
+export type ConflictDecisionStatus =
+  | "SAFE_TO_ADD"
+  | "WARNING_CONFIRM_REQUIRED"
+  | "SCHEDULE_CHANGE_CONFIRM_REQUIRED"
+  | "UNCERTAIN_CONFIRM_REQUIRED";
+
 export interface ActiveIngredient {
   name: string;
   strength: string;
@@ -105,6 +111,8 @@ export interface InteractionConflict {
 }
 
 export interface ScheduleSuggestion {
+  target_medication_id: string | null;
+  target_medication_name: string | null;
   allowed: boolean;
   reason: string;
   change_type: "separate_by_hours" | null;
@@ -113,12 +121,33 @@ export interface ScheduleSuggestion {
   suggested_schedule: MedicationSchedule | null;
 }
 
+// Backend save endpoint — save-only, no conflict data
 export interface MedicationCreateResponse {
   medication: Medication;
+  status: "saved";
+}
+
+// Backend conflict check endpoint — separate from save
+export interface ConflictCheckResponse {
+  decision_status: ConflictDecisionStatus;
   duplicates: DuplicateRisk[];
   conflicts: InteractionConflict[];
   schedule_suggestions: ScheduleSuggestion[];
-  status: "saved" | "saved_with_warnings" | "blocked_pending_review";
+  uncertainty_message: string | null;
+  normalized_name: string | null;
+  active_ingredients: ActiveIngredient[] | null;
+}
+
+export interface ConflictCheckRequest {
+  user_id: string;
+  candidate_medication: {
+    display_name: string;
+    normalized_name?: string | null;
+    active_ingredients?: ActiveIngredient[] | null;
+    dosage_text: string;
+    instructions: string;
+    schedule: MedicationSchedule;
+  };
 }
 
 export interface ScheduleItem {
@@ -141,6 +170,13 @@ export interface WeeklyScheduleResponse {
   days: ScheduleDay[];
 }
 
+export interface MonthlyScheduleResponse {
+  user_id: string;
+  year: number;
+  month: number;
+  days: ScheduleDay[];
+}
+
 export interface MedicationLogCreateRequest {
   user_id: string;
   medication_id: string;
@@ -157,6 +193,13 @@ export interface SideEffectLogCreateRequest {
   notes: string;
 }
 
+export interface ADRAnalysisRequest {
+  user_id: string;
+  effect: string;
+  severity: SymptomSeverity;
+  date: string;
+}
+
 export interface CulpritMedication {
   medication_id: string;
   display_name: string;
@@ -169,4 +212,12 @@ export interface ADRAnalysisResponse {
   likely_culprits: CulpritMedication[];
   warning_level: "low" | "medium" | "high";
   disclaimer: string;
+}
+
+export interface AutofillFieldsRequest {
+  user_id: string;
+  display_name?: string;
+  dosage_text?: string;
+  instructions?: string;
+  schedule?: MedicationSchedule;
 }
