@@ -1,11 +1,51 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-# Python
-__pycache__/
-*.pyc
-venv/
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
 
-# Environment
-.env
+# next.js
+/.next/
+/out/
 
-# OS
+# production
+/build
+
+# misc
 .DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# env
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.venv/
+venv/
+env/
+
+# testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# local files
+*.sqlite3
