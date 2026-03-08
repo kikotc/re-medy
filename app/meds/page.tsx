@@ -6,6 +6,10 @@ import MedicationCard from "@/components/MedicationCard";
 import PhotoUploadPanel from "@/components/PhotoUploadPanel";
 import { mockMedications } from "@/lib/mockData";
 import { emptyMedicationDraft, MedicationDraft } from "@/lib/types";
+import {
+  medicationDraftToConflictPayload,
+  medicationDraftToCreatePayload,
+} from "@/lib/api";
 
 type SuggestedFields = {
   displayName?: boolean;
@@ -51,30 +55,37 @@ export default function MedsPage() {
     setEntryMode("manual");
   };
 
-  const handleManualSubmit = (values: VisibleFormValues) => {
-    const nextDraft: MedicationDraft = {
-      ...draft,
+const handleManualSubmit = (values: VisibleFormValues) => {
+  const nextDraft: MedicationDraft = {
+    ...draft,
 
-      displayName: values.displayName,
-      dosageText: values.dosageText,
-      instructions: values.instructions,
-      recurrenceType: values.recurrenceType,
-      daysOfWeek: values.daysOfWeek,
-      time: values.time,
+    displayName: values.displayName,
+    dosageText: values.dosageText,
+    instructions: values.instructions,
+    recurrenceType: values.recurrenceType,
+    daysOfWeek: values.daysOfWeek,
+    time: values.time,
 
-      normalizedName:
-        draft.normalizedName || values.displayName.trim().toLowerCase(),
+    normalizedName:
+      draft.normalizedName || values.displayName.trim().toLowerCase(),
 
-      activeIngredients: draft.activeIngredients,
-      needsReview: draft.needsReview,
-      confidence: draft.confidence,
-      source: draft.source || "manual",
-    };
-
-    setDraft(nextDraft);
-
-    console.log("draft ready for backend linking:", nextDraft);
+    activeIngredients: draft.activeIngredients,
+    needsReview: draft.needsReview,
+    confidence: draft.confidence,
+    source: draft.source || "manual",
   };
+
+  setDraft(nextDraft);
+
+  console.log(
+    "conflict payload:",
+    medicationDraftToConflictPayload(nextDraft)
+  );
+  console.log(
+    "create payload:",
+    medicationDraftToCreatePayload(nextDraft, "demo-user")
+  );
+};
 
   const formInitialValues = {
     displayName: draft.displayName,

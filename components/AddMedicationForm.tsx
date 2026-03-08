@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const weekDays = [
   "monday",
@@ -168,6 +168,15 @@ export default function AddMedicationForm({
   );
   const [daysOfWeek, setDaysOfWeek] = useState<string[]>(defaults.daysOfWeek);
   const [time, setTime] = useState(defaults.time);
+
+  useEffect(() => {
+    setDisplayName(defaults.displayName);
+    setDosageText(defaults.dosageText);
+    setInstructions(defaults.instructions);
+    setRecurrenceType(defaults.recurrenceType);
+    setDaysOfWeek(defaults.daysOfWeek);
+    setTime(defaults.time);
+  }, [defaults]);
 
   const [aiFlags, setAiFlags] = useState<SuggestionFlags>({
     displayName: suggestedFields?.displayName ?? false,
