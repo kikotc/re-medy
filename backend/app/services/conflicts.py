@@ -200,6 +200,7 @@ async def check_interactions(
 def generate_schedule_suggestions(
     candidate_schedule: Schedule,
     conflicts: list[InteractionConflict],
+    candidate_display_name: str = "new medication",
 ) -> list[ScheduleSuggestion]:
     """Generate schedule adjustment suggestions for reschedulable conflicts only."""
     suggestions: list[ScheduleSuggestion] = []
@@ -207,6 +208,9 @@ def generate_schedule_suggestions(
     for conflict in conflicts:
         if not conflict.auto_reschedulable:
             suggestions.append(ScheduleSuggestion(
+                target_medication_id="candidate",
+                target_medication_name=candidate_display_name,
+                is_candidate=True,
                 allowed=False,
                 reason=f"Major interaction cannot be safely auto-rescheduled: {conflict.reason}",
                 change_type=None,
@@ -224,6 +228,9 @@ def generate_schedule_suggestions(
             new_times.append(f"{new_h:02d}:{m:02d}")
 
         suggestions.append(ScheduleSuggestion(
+            target_medication_id="candidate",
+            target_medication_name=candidate_display_name,
+            is_candidate=True,
             allowed=True,
             reason=f"Separate from {conflict.with_medication_name} by at least {sep} hours",
             change_type="separate_by_hours",

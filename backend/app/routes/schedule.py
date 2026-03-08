@@ -34,6 +34,8 @@ def _row_to_medication(row: dict) -> Medication:
         start_date=row.get("start_date"),
         source=row.get("source", "manual"),
         schedule=sched,
+        needs_review=row.get("needs_review", False),
+        confidence=row.get("confidence", 1.0),
         created_at=row.get("created_at"),
     )
 
@@ -124,10 +126,25 @@ async def apply_schedule_suggestion(req: ApplyScheduleSuggestionRequest):
     if not result.data:
         raise HTTPException(status_code=404, detail="Medication not found")
 
+    old_schedule = result.data[0].get("schedule", {})
+
     # Update the schedule
     db.table("medications").update({
         "schedule": req.suggested_schedule.model_dump()
     }).eq("id", req.medication_id).execute()
+
+    # Record audit event in schedule_adjustment_events
+    from datetime import timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.table("schedule_adjustment_events").insert({
+        "user_id": req.user_id,
+        "target_medication_id": req.medication_id,
+        "old_schedule": old_schedule,
+        "suggested_schedule": req.suggested_schedule.model_dump(),
+        "applied": True,
+        "reason": req.reason,
+        "applied_at": now_iso,
+    }).execute()
 
     return {
         "status": "updated",

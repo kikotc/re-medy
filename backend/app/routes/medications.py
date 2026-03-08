@@ -10,7 +10,6 @@ from app.models.medication import (
     ActiveIngredient,
     Schedule,
 )
-from app.services.conflicts import check_interactions, generate_schedule_suggestions
 
 router = APIRouter()
 
@@ -45,36 +44,27 @@ def _row_to_medication(row: dict) -> Medication:
         start_date=row.get("start_date"),
         source=row.get("source", "manual"),
         schedule=sched,
+        needs_review=row.get("needs_review", False),
+        confidence=row.get("confidence", 1.0),
         created_at=row.get("created_at"),
     )
 
 
 @router.post("/medications", response_model=MedicationCreateResponse)
 async def create_medication(req: MedicationCreateRequest):
+    """Save-only endpoint.
+
+    The frontend must call POST /conflicts/check BEFORE this endpoint.
+    By the time this is called the user has already reviewed and confirmed.
+    """
     db = get_supabase()
     med_id = f"med_{uuid.uuid4().hex[:12]}"
 
     # Ensure user exists (FK constraint)
     _ensure_user_exists(req.user_id)
 
-    # Fetch existing meds for conflict checking
-    existing_rows = db.table("medications").select("*").eq("user_id", req.user_id).execute()
-    existing_meds = [_row_to_medication(r) for r in existing_rows.data]
-
-    # Check duplicates & conflicts via Gemini (with local fallback)
-    duplicates, conflicts = await check_interactions(req.active_ingredients, existing_meds)
-    suggestions = generate_schedule_suggestions(req.schedule, conflicts)
-
-    # Determine status
-    has_major = any(c.severity == "major" for c in conflicts)
-    if has_major:
-        status = "blocked_pending_review"
-    elif duplicates or conflicts:
-        status = "saved_with_warnings"
-    else:
-        status = "saved"
-
-    # Save to Supabase (even blocked — frontend can decide to delete)
+    # Build and insert the medication row
+    now_iso = datetime.now(timezone.utc).isoformat()
     row = {
         "id": med_id,
         "user_id": req.user_id,
@@ -86,19 +76,14 @@ async def create_medication(req: MedicationCreateRequest):
         "start_date": req.start_date.isoformat() if req.start_date else None,
         "source": req.source,
         "schedule": req.schedule.model_dump(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "needs_review": req.needs_review,
+        "confidence": req.confidence,
+        "created_at": now_iso,
     }
     db.table("medications").insert(row).execute()
 
     med = _row_to_medication(row)
-
-    return MedicationCreateResponse(
-        medication=med,
-        duplicates=duplicates,
-        conflicts=conflicts,
-        schedule_suggestions=suggestions,
-        status=status,
-    )
+    return MedicationCreateResponse(status="saved", medication=med)
 
 
 @router.get("/medications/{user_id}", response_model=list[Medication])

@@ -31,17 +31,8 @@ class ParsedMedicationCandidate(BaseModel):
 
 
 # ── 2. MedicationCreateRequest ────────────────────────────────────
-
-class MedicationCreateRequest(BaseModel):
-    user_id: str
-    display_name: str
-    normalized_name: str
-    active_ingredients: list[ActiveIngredient]
-    dosage_text: str = ""
-    instructions: str = ""
-    start_date: date | None = None
-    source: Literal["text", "photo", "manual"] = "manual"
-    schedule: Schedule = Field(default_factory=Schedule)
+# (definition moved below DuplicateRisk / InteractionConflict / ScheduleSuggestion
+#  so the response model can reference them; see section 7)
 
 
 # ── 3. Medication (DB row) ────────────────────────────────────────
@@ -57,6 +48,8 @@ class Medication(BaseModel):
     start_date: date | None = None
     source: str = "manual"
     schedule: Schedule = Field(default_factory=Schedule)
+    needs_review: bool = False
+    confidence: float = 1.0
     created_at: datetime | None = None
 
 
@@ -88,6 +81,9 @@ class InteractionConflict(BaseModel):
 # ── 6. ScheduleSuggestion ───────────────────────────────────────
 
 class ScheduleSuggestion(BaseModel):
+    target_medication_id: str = ""
+    target_medication_name: str = ""
+    is_candidate: bool = True
     allowed: bool
     reason: str
     change_type: str | None = None
@@ -96,14 +92,30 @@ class ScheduleSuggestion(BaseModel):
     suggested_schedule: Schedule | None = None
 
 
-# ── 7. MedicationCreateResponse ─────────────────────────────────
+# ── 7. MedicationCreateRequest / Response ─────────────────────────
+
+class MedicationCreateRequest(BaseModel):
+    """Save-only endpoint (POST /medications).
+
+    The frontend should only call this AFTER conflict-check has been done
+    and the user has confirmed they want to proceed.
+    """
+    user_id: str
+    display_name: str
+    normalized_name: str
+    active_ingredients: list[ActiveIngredient]
+    dosage_text: str = ""
+    instructions: str = ""
+    start_date: date | None = None
+    source: Literal["text", "photo", "manual"] = "manual"
+    schedule: Schedule = Field(default_factory=Schedule)
+    needs_review: bool = False
+    confidence: float = 1.0
+
 
 class MedicationCreateResponse(BaseModel):
+    status: Literal["saved"] = "saved"
     medication: Medication
-    duplicates: list[DuplicateRisk] = Field(default_factory=list)
-    conflicts: list[InteractionConflict] = Field(default_factory=list)
-    schedule_suggestions: list[ScheduleSuggestion] = Field(default_factory=list)
-    status: Literal["saved", "saved_with_warnings", "blocked_pending_review"] = "saved"
 
 
 # ── 8. ScheduleItem ─────────────────────────────────────────────
@@ -147,12 +159,16 @@ class ParseMedicationTextRequest(BaseModel):
 # ── Conflict check request ───────────────────────────────────────
 
 class CandidateMedication(BaseModel):
-    display_name: str
-    normalized_name: str
-    active_ingredients: list[ActiveIngredient]
+    display_name: str = ""
+    normalized_name: str = ""
+    active_ingredients: list[ActiveIngredient] = Field(default_factory=list)
     dosage_text: str = ""
     instructions: str = ""
     schedule: Schedule = Field(default_factory=Schedule)
+    raw_text: str = ""
+    needs_review: bool = False
+    confidence: float = 1.0
+    uncertainty_reason: str = ""
 
 
 class ConflictCheckRequest(BaseModel):
@@ -164,6 +180,13 @@ class ConflictCheckResponse(BaseModel):
     duplicates: list[DuplicateRisk] = Field(default_factory=list)
     conflicts: list[InteractionConflict] = Field(default_factory=list)
     schedule_suggestions: list[ScheduleSuggestion] = Field(default_factory=list)
+    decision_status: Literal[
+        "SAFE_TO_ADD",
+        "WARNING_CONFIRM_REQUIRED",
+        "SCHEDULE_CHANGE_CONFIRM_REQUIRED",
+        "UNCERTAIN_CONFIRM_REQUIRED",
+    ] = "SAFE_TO_ADD"
+    message: str = ""
 
 
 # ── Schedule apply ────────────────────────────────────────────────
@@ -172,3 +195,4 @@ class ApplyScheduleSuggestionRequest(BaseModel):
     user_id: str
     medication_id: str
     suggested_schedule: Schedule
+    reason: str = ""
