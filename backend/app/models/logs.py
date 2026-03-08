@@ -17,3 +17,4 @@ class SideEffectLogCreateRequest(BaseModel):
     severity: Literal["mild", "moderate", "severe"] = "mild"
     date: date
     notes: str = ""
+    

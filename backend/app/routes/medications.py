@@ -20,7 +20,7 @@ def _ensure_user_exists(user_id: str):
     try:
         db.table("users").upsert({"id": user_id}).execute()
     except Exception:
-        pass  # Already exists or non-critical
+        pass
 
 
 def _row_to_medication(row: dict) -> Medication:

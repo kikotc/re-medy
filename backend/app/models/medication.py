@@ -18,6 +18,8 @@ class Schedule(BaseModel):
 
 
 # ── 1. ParsedMedicationCandidate (Gemini output) ──────────────────
+# Point 12: includes normalized_name, active_ingredients, needs_review,
+# confidence, so frontend can carry them as hidden fields.
 
 class ParsedMedicationCandidate(BaseModel):
     display_name: str
@@ -79,6 +81,8 @@ class InteractionConflict(BaseModel):
 
 
 # ── 6. ScheduleSuggestion ───────────────────────────────────────
+# Point 7: added target_medication_id + target_medication_name
+# so frontend knows which existing med's schedule needs to change.
 
 class ScheduleSuggestion(BaseModel):
     target_medication_id: str = ""
@@ -129,7 +133,8 @@ class ScheduleItem(BaseModel):
     taken: bool = False
 
 
-# ── 9. DaySchedule + WeeklyScheduleResponse ─────────────────────
+# ── 9. DaySchedule + WeeklyScheduleResponse + MonthlyScheduleResponse ──
+# Point 4: added MonthlyScheduleResponse for calendar view.
 
 class DaySchedule(BaseModel):
     date: date
@@ -156,7 +161,22 @@ class ParseMedicationTextRequest(BaseModel):
     user_id: str
 
 
-# ── Conflict check request ───────────────────────────────────────
+# ── Autofill from partial form fields ────────────────────────────
+
+class AutofillFieldsRequest(BaseModel):
+    """Frontend sends whatever fields the user has already filled in.
+    All fields are optional. Gemini fills in the gaps."""
+    user_id: str
+    display_name: str | None = None
+    dosage_text: str | None = None
+    instructions: str | None = None
+    schedule: Schedule | None = None
+
+
+# ── Conflict check request/response ─────────────────────────────
+# Point 2: normalized_name and active_ingredients are now optional.
+# If missing, /conflicts/check calls Gemini to normalize internally.
+# This lets complete text input skip autofill entirely.
 
 class CandidateMedication(BaseModel):
     display_name: str = ""
@@ -176,7 +196,17 @@ class ConflictCheckRequest(BaseModel):
     candidate_medication: CandidateMedication
 
 
+# Point 1 + 11: decision_status + uncertainty_message
+ConflictStatus = Literal[
+    "SAFE_TO_ADD",
+    "WARNING_CONFIRM_REQUIRED",
+    "SCHEDULE_CHANGE_CONFIRM_REQUIRED",
+    "UNCERTAIN_CONFIRM_REQUIRED",
+]
+
+
 class ConflictCheckResponse(BaseModel):
+    decision_status: ConflictStatus
     duplicates: list[DuplicateRisk] = Field(default_factory=list)
     conflicts: list[InteractionConflict] = Field(default_factory=list)
     schedule_suggestions: list[ScheduleSuggestion] = Field(default_factory=list)
@@ -190,9 +220,10 @@ class ConflictCheckResponse(BaseModel):
 
 
 # ── Schedule apply ────────────────────────────────────────────────
+# Point 6: includes target_medication_id explicitly + reason for audit.
 
 class ApplyScheduleSuggestionRequest(BaseModel):
     user_id: str
-    medication_id: str
+    target_medication_id: str
     suggested_schedule: Schedule
     reason: str = ""

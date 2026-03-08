@@ -53,20 +53,18 @@ def _check_interactions_from_db(
     conflicts: list[InteractionConflict] = []
     seen: set[tuple[str, str, str]] = set()
 
-    # Pull all rules from DB once
     try:
         result = db.table("interaction_rules").select("*").execute()
         rules = result.data or []
     except Exception:
         return []
 
-    # Build a lookup: (normalized_a, normalized_b) -> rule dict
     rule_lookup: dict[tuple[str, str], dict] = {}
     for rule in rules:
         a = _normalize(rule.get("ingredient_a", ""))
         b = _normalize(rule.get("ingredient_b", ""))
         rule_lookup[(a, b)] = rule
-        rule_lookup[(b, a)] = rule  # order-independent
+        rule_lookup[(b, a)] = rule
 
     for cand_ing in candidate_ingredients:
         for med in existing_meds:
@@ -139,14 +137,9 @@ async def check_interactions(
     candidate_ingredients: list[ActiveIngredient],
     existing_meds: list[Medication],
 ) -> tuple[list[DuplicateRisk], list[InteractionConflict]]:
-    """Check for duplicates and interactions using Gemini, with local fallback.
-
-    Returns (duplicates, conflicts).
-    """
-    # Always run local duplicate check (fast, reliable)
+    """Check for duplicates and interactions using Gemini, with local fallback."""
     local_duplicates = check_duplicates(candidate_ingredients, existing_meds)
 
-    # Build payloads for Gemini
     candidate_payload = [
         {"name": i.name, "strength": i.strength} for i in candidate_ingredients
     ]
@@ -162,15 +155,12 @@ async def check_interactions(
         for med in existing_meds
     ]
 
-    # Always check DB rules (fast, reliable)
     db_conflicts = _check_interactions_from_db(candidate_ingredients, existing_meds)
 
-    # Try Gemini for additional AI-powered analysis
     try:
         gemini_results = await check_interactions_gemini(candidate_payload, existing_payload)
         gemini_duplicates, gemini_conflicts = _parse_gemini_conflicts(gemini_results)
 
-        # Merge: Gemini duplicates + local duplicates, deduplicated
         seen_dup_keys: set[tuple[str, str]] = set()
         merged_duplicates: list[DuplicateRisk] = []
         for d in gemini_duplicates + local_duplicates:
@@ -179,7 +169,6 @@ async def check_interactions(
                 seen_dup_keys.add(key)
                 merged_duplicates.append(d)
 
-        # Merge: DB conflicts + Gemini conflicts, deduplicated
         seen_conflict_keys: set[tuple[str, str, str]] = set()
         merged_conflicts: list[InteractionConflict] = []
         for c in db_conflicts + gemini_conflicts:
@@ -191,11 +180,12 @@ async def check_interactions(
         return merged_duplicates, merged_conflicts
 
     except Exception:
-        # Gemini failed — return DB results only
         return local_duplicates, db_conflicts
 
 
-# ── Schedule suggestions (unchanged — pure logic) ────────────────
+# ── Schedule suggestions ─────────────────────────────────────────
+# Point 7: now includes target_medication_id + target_medication_name
+# so frontend knows which existing med needs the schedule change.
 
 def generate_schedule_suggestions(
     candidate_schedule: Schedule,
@@ -204,6 +194,11 @@ def generate_schedule_suggestions(
 ) -> list[ScheduleSuggestion]:
     """Generate schedule adjustment suggestions for reschedulable conflicts only."""
     suggestions: list[ScheduleSuggestion] = []
+
+    # Build a lookup for existing med names
+    med_lookup: dict[str, str] = {}
+    if existing_meds:
+        med_lookup = {m.id: m.display_name for m in existing_meds}
 
     for conflict in conflicts:
         if not conflict.auto_reschedulable:
