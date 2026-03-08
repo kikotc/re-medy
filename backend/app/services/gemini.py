@@ -3,14 +3,21 @@
 import base64
 import json
 import logging
+import os
 
 import google.generativeai as genai
 
 from app.config import get_settings
-from app.models.medication import AutofillFieldsRequest, ParsedMedicationCandidate, Schedule
+from app.models.medication import (
+    AutofillFieldsRequest,
+    ParsedMedicationCandidate,
+    Schedule,
+)
 
 logger = logging.getLogger(__name__)
 _configured = False
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+DEFAULT_MED_TIME = "21:00"
 
 
 def _ensure_configured():
@@ -32,29 +39,39 @@ def _strip_markdown_fences(text: str) -> str:
     return text.strip()
 
 
-MEDICATION_JSON_SCHEMA = """\
+MEDICATION_JSON_SCHEMA = f"""\
 Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
-{
+{{
   "display_name": "<brand or common name, empty string if unknown>",
   "normalized_name": "<generic/active ingredient name, lowercase, or 'unknown'>",
   "active_ingredients": [
-    {"name": "<ingredient>", "strength": "<e.g. 200 mg>"}
+    {{"name": "<ingredient>", "strength": "<e.g. 200 mg>"}}
   ],
   "dosage_text": "<e.g. 200 mg, or empty string if unknown>",
   "instructions": "<e.g. take after meals, or empty string if unknown>",
-  "schedule": {
+  "schedule": {{
     "recurrence_type": "daily" or "weekly",
     "days_of_week": [],
     "times": ["HH:MM"]
-  } or null,
+  }},
   "needs_review": <true if uncertain>,
   "confidence": <0.0 to 1.0>
-}
+}}
+
 Rules:
 - Never return null for display_name, normalized_name, dosage_text, or instructions.
 - Use empty string instead of null for missing text fields.
-- Only include a schedule if the label or text actually supports it.
-- If you cannot infer a schedule, set "schedule" to null and set needs_review to true.
+- Always return a schedule object.
+- If the label or instructions clearly imply a time, use a reasonable default:
+  - morning -> 08:00
+  - noon / lunch -> 12:00
+  - evening / dinner -> 18:00
+  - bedtime / night -> 21:00
+- For melatonin, default to 21:00 unless the text clearly suggests another time.
+- If no specific timing clue is present, use recurrence_type="daily" and times=["{DEFAULT_MED_TIME}"].
+- When you use that generic default time because timing is unclear, set needs_review=true.
+- "weekly" recurrence_type should include days_of_week like ["monday","wednesday"].
+- normalized_name should be the generic drug name in lowercase when known.
 """
 
 
@@ -65,15 +82,15 @@ def _safe_parse_candidate(raw: str) -> ParsedMedicationCandidate:
     if not isinstance(data, dict):
         raise ValueError("Gemini response was not a JSON object")
 
-    schedule = data.get("schedule")
-    if schedule is None:
-        schedule_data = None
-    else:
-        schedule_data = {
-            "recurrence_type": schedule.get("recurrence_type") or "daily",
-            "days_of_week": schedule.get("days_of_week") or [],
-            "times": schedule.get("times") or [],
-        }
+    raw_schedule = data.get("schedule") or {}
+    schedule_times = raw_schedule.get("times") or [DEFAULT_MED_TIME]
+    schedule_data = {
+        "recurrence_type": raw_schedule.get("recurrence_type") or "daily",
+        "days_of_week": raw_schedule.get("days_of_week") or [],
+        "times": schedule_times,
+    }
+
+    schedule_was_missing = not data.get("schedule")
 
     cleaned = {
         "display_name": data.get("display_name") or "Unknown",
@@ -82,7 +99,7 @@ def _safe_parse_candidate(raw: str) -> ParsedMedicationCandidate:
         "dosage_text": data.get("dosage_text") or "",
         "instructions": data.get("instructions") or "",
         "schedule": schedule_data,
-        "needs_review": bool(data.get("needs_review", False)),
+        "needs_review": bool(data.get("needs_review", False) or schedule_was_missing),
         "confidence": float(data.get("confidence", 0.0) or 0.0),
     }
 
@@ -102,7 +119,8 @@ def _fallback_candidate(
         active_ingredients=[],
         dosage_text=dosage_text,
         instructions=instructions,
-        schedule=schedule,
+        schedule=schedule
+        or Schedule(recurrence_type="daily", days_of_week=[], times=[DEFAULT_MED_TIME]),
         needs_review=True,
         confidence=0.0,
     )
@@ -110,7 +128,7 @@ def _fallback_candidate(
 
 async def parse_medication_text(raw_text: str) -> ParsedMedicationCandidate:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    model = genai.GenerativeModel(MODEL_NAME)
 
     prompt = (
         "You are a medication parsing assistant. Parse the following medication text into structured JSON.\n\n"
@@ -127,7 +145,6 @@ async def parse_medication_text(raw_text: str) -> ParsedMedicationCandidate:
         return _fallback_candidate(
             display_name=raw_text.split()[0] if raw_text.strip() else "Unknown",
             instructions=raw_text,
-            schedule=None,
         )
 
 
@@ -136,13 +153,14 @@ async def parse_medication_photo(
     content_type: str = "image/jpeg",
 ) -> ParsedMedicationCandidate:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    model = genai.GenerativeModel(MODEL_NAME)
 
     b64 = base64.b64encode(image_bytes).decode("utf-8")
 
     prompt = (
         "You are a medication parsing assistant. Look at this medication label, bottle, or box photo "
         "and extract the medication information into structured JSON.\n\n"
+        "If the image suggests a typical timing such as morning, noon, evening, or bedtime, include a reasonable suggested time.\n\n"
         f"{MEDICATION_JSON_SCHEMA}"
     )
 
@@ -160,13 +178,12 @@ async def parse_medication_photo(
         return _fallback_candidate(
             display_name="Unknown",
             instructions="Could not parse image",
-            schedule=None,
         )
 
 
 async def autofill_from_fields(req: AutofillFieldsRequest) -> ParsedMedicationCandidate:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    model = genai.GenerativeModel(MODEL_NAME)
 
     provided_parts: list[str] = []
     if req.display_name:
@@ -197,8 +214,9 @@ async def autofill_from_fields(req: AutofillFieldsRequest) -> ParsedMedicationCa
         "- For dosage_text: if already provided, keep it.\n"
         "- For instructions: if already provided, keep it.\n"
         "- For schedule: if the user already set one, keep it exactly.\n"
-        "- If you cannot confidently identify the medication, set needs_review=true and confidence below 0.5.\n"
-        "- If you cannot infer a schedule, set schedule to null. Do not invent 09:00.\n\n"
+        f'- If no schedule was provided and no specific timing clue exists, suggest daily at {DEFAULT_MED_TIME}.\n'
+        "- If a medication is commonly associated with a time of day, suggest a reasonable time.\n"
+        "- If you cannot confidently identify the medication, set needs_review=true and confidence below 0.5.\n\n"
         f"{MEDICATION_JSON_SCHEMA}"
     )
 
@@ -232,7 +250,7 @@ async def check_interactions_gemini(
     existing_medications: list[dict],
 ) -> list[dict]:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    model = genai.GenerativeModel(MODEL_NAME)
 
     candidate_json = json.dumps(candidate_ingredients, indent=2, default=str)
     existing_json = json.dumps(existing_medications, indent=2, default=str)
@@ -284,7 +302,7 @@ async def analyze_adr(
     side_effect_rules: list[dict] | None = None,
 ) -> dict:
     _ensure_configured()
-    model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    model = genai.GenerativeModel(MODEL_NAME)
 
     meds_json = json.dumps(medications, indent=2, default=str)
     logs_json = json.dumps(recent_logs, indent=2, default=str)

@@ -12,6 +12,8 @@ const weekDays = [
   "sunday",
 ] as const;
 
+const DEFAULT_MED_TIME = "21:00";
+
 type SuggestionFlags = {
   displayName?: boolean;
   dosageText?: boolean;
@@ -19,6 +21,15 @@ type SuggestionFlags = {
   recurrenceType?: boolean;
   daysOfWeek?: boolean;
   time?: boolean;
+};
+
+type ManualOverrides = {
+  displayName: boolean;
+  dosageText: boolean;
+  instructions: boolean;
+  recurrenceType: boolean;
+  daysOfWeek: boolean;
+  time: boolean;
 };
 
 type FormValues = {
@@ -30,10 +41,14 @@ type FormValues = {
   time: string;
 };
 
+type SubmitMeta = {
+  manualOverrides: ManualOverrides;
+};
+
 type AddMedicationFormProps = {
   initialValues?: Partial<FormValues>;
   suggestedFields?: SuggestionFlags;
-  onSubmit?: (values: FormValues) => void | Promise<void>;
+  onSubmit?: (values: FormValues, meta: SubmitMeta) => void | Promise<void>;
   submitting?: boolean;
 };
 
@@ -56,6 +71,15 @@ function FieldLabel({
   );
 }
 
+const emptyManualOverrides: ManualOverrides = {
+  displayName: false,
+  dosageText: false,
+  instructions: false,
+  recurrenceType: false,
+  daysOfWeek: false,
+  time: false,
+};
+
 export default function AddMedicationForm({
   initialValues,
   suggestedFields,
@@ -68,8 +92,11 @@ export default function AddMedicationForm({
     instructions: initialValues?.instructions ?? "",
     recurrenceType: initialValues?.recurrenceType ?? "daily",
     daysOfWeek: initialValues?.daysOfWeek ?? [],
-    time: initialValues?.time ?? "",
+    time: initialValues?.time ?? DEFAULT_MED_TIME,
   });
+
+  const [manualOverrides, setManualOverrides] =
+    useState<ManualOverrides>(emptyManualOverrides);
 
   const [formError, setFormError] = useState("");
 
@@ -80,8 +107,9 @@ export default function AddMedicationForm({
       instructions: initialValues?.instructions ?? "",
       recurrenceType: initialValues?.recurrenceType ?? "daily",
       daysOfWeek: initialValues?.daysOfWeek ?? [],
-      time: initialValues?.time ?? "",
+      time: initialValues?.time ?? DEFAULT_MED_TIME,
     });
+    setManualOverrides(emptyManualOverrides);
     setFormError("");
   }, [initialValues]);
 
@@ -97,6 +125,7 @@ export default function AddMedicationForm({
         ? prev.daysOfWeek.filter((d) => d !== day)
         : [...prev.daysOfWeek, day],
     }));
+    setManualOverrides((prev) => ({ ...prev, daysOfWeek: true }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,7 +147,7 @@ export default function AddMedicationForm({
       return;
     }
 
-    await onSubmit?.(values);
+    await onSubmit?.(values, { manualOverrides });
   };
 
   return (
@@ -131,24 +160,23 @@ export default function AddMedicationForm({
         <input
           required
           value={values.displayName}
-          onChange={(e) =>
-            setValues((prev) => ({ ...prev, displayName: e.target.value }))
-          }
+          onChange={(e) => {
+            setValues((prev) => ({ ...prev, displayName: e.target.value }));
+            setManualOverrides((prev) => ({ ...prev, displayName: true }));
+          }}
           placeholder="e.g. Advil"
           className="w-full rounded-xl border px-3 py-2"
         />
       </div>
 
       <div className="space-y-1">
-        <FieldLabel
-          label="Dosage"
-          suggested={suggestedFields?.dosageText}
-        />
+        <FieldLabel label="Dosage" suggested={suggestedFields?.dosageText} />
         <input
           value={values.dosageText}
-          onChange={(e) =>
-            setValues((prev) => ({ ...prev, dosageText: e.target.value }))
-          }
+          onChange={(e) => {
+            setValues((prev) => ({ ...prev, dosageText: e.target.value }));
+            setManualOverrides((prev) => ({ ...prev, dosageText: true }));
+          }}
           placeholder="e.g. 200 mg"
           className="w-full rounded-xl border px-3 py-2"
         />
@@ -161,9 +189,10 @@ export default function AddMedicationForm({
         />
         <textarea
           value={values.instructions}
-          onChange={(e) =>
-            setValues((prev) => ({ ...prev, instructions: e.target.value }))
-          }
+          onChange={(e) => {
+            setValues((prev) => ({ ...prev, instructions: e.target.value }));
+            setManualOverrides((prev) => ({ ...prev, instructions: true }));
+          }}
           placeholder="e.g. Take after meals"
           rows={3}
           className="w-full rounded-xl border px-3 py-2"
@@ -177,14 +206,15 @@ export default function AddMedicationForm({
         />
         <select
           value={values.recurrenceType}
-          onChange={(e) =>
+          onChange={(e) => {
             setValues((prev) => ({
               ...prev,
               recurrenceType: e.target.value as "daily" | "weekly",
               daysOfWeek:
                 e.target.value === "weekly" ? prev.daysOfWeek : [],
-            }))
-          }
+            }));
+            setManualOverrides((prev) => ({ ...prev, recurrenceType: true }));
+          }}
           className="w-full rounded-xl border px-3 py-2"
         >
           <option value="daily">Daily</option>
@@ -223,9 +253,10 @@ export default function AddMedicationForm({
         <input
           type="time"
           value={values.time}
-          onChange={(e) =>
-            setValues((prev) => ({ ...prev, time: e.target.value }))
-          }
+          onChange={(e) => {
+            setValues((prev) => ({ ...prev, time: e.target.value }));
+            setManualOverrides((prev) => ({ ...prev, time: true }));
+          }}
           className="w-full rounded-xl border px-3 py-2"
           required
         />
