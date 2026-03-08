@@ -1,14 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ActiveIngredient } from "@/lib/types";
 
-type FormValues = {
-  displayName: string;
-  dosageText: string;
-  instructions: string;
-  recurrenceType: "daily" | "weekly";
-  daysOfWeek: string[];
-  time: string;
+type ParsedPhotoDraft = {
+  displayName?: string;
+  dosageText?: string;
+  instructions?: string;
+  recurrenceType?: "daily" | "weekly";
+  daysOfWeek?: string[];
+  time?: string;
+
+  normalizedName?: string;
+  activeIngredients?: ActiveIngredient[];
+  needsReview?: boolean;
+  confidence?: number;
+  source?: "photo";
 };
 
 type SuggestionFlags = {
@@ -21,7 +28,7 @@ type SuggestionFlags = {
 };
 
 type PhotoUploadPanelProps = {
-  onParsed?: (values: Partial<FormValues>, suggested: SuggestionFlags) => void;
+  onParsed?: (values: ParsedPhotoDraft, suggested: SuggestionFlags) => void;
 };
 
 export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
@@ -71,7 +78,6 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const url = URL.createObjectURL(file);
     setPreview(url);
   };
@@ -111,7 +117,6 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/png");
-
     setPreview(dataUrl);
   };
 
@@ -128,6 +133,12 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
         recurrenceType: "daily",
         daysOfWeek: [],
         time: "09:00",
+
+        normalizedName: "acetaminophen",
+        activeIngredients: [{ name: "acetaminophen", strength: "500 mg" }],
+        needsReview: false,
+        confidence: 0.92,
+        source: "photo",
       },
       {
         displayName: true,

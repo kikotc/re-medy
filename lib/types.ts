@@ -53,6 +53,36 @@ export interface Medication {
   created_at: string;
 }
 
+export interface MedicationDraft {
+  displayName: string;
+  dosageText: string;
+  instructions: string;
+  recurrenceType: "daily" | "weekly";
+  daysOfWeek: string[];
+  time: string;
+
+  normalizedName: string;
+  activeIngredients: ActiveIngredient[];
+  needsReview: boolean;
+  confidence: number;
+  source: MedicationSource;
+}
+
+export const emptyMedicationDraft: MedicationDraft = {
+  displayName: "",
+  dosageText: "",
+  instructions: "",
+  recurrenceType: "daily",
+  daysOfWeek: [],
+  time: "",
+
+  normalizedName: "",
+  activeIngredients: [],
+  needsReview: false,
+  confidence: 0,
+  source: "manual",
+};
+
 export interface DuplicateRisk {
   type: "duplicate_ingredient";
   ingredient: string;

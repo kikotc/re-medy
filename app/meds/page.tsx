@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import AddMedicationForm from "@/components/AddMedicationForm";
-import PhotoUploadPanel from "@/components/PhotoUploadPanel";
 import MedicationCard from "@/components/MedicationCard";
+import PhotoUploadPanel from "@/components/PhotoUploadPanel";
 import { mockMedications } from "@/lib/mockData";
+import { emptyMedicationDraft, MedicationDraft } from "@/lib/types";
 
 type SuggestedFields = {
   displayName?: boolean;
@@ -15,7 +16,7 @@ type SuggestedFields = {
   time?: boolean;
 };
 
-type FormValues = {
+type VisibleFormValues = {
   displayName: string;
   dosageText: string;
   instructions: string;
@@ -27,25 +28,61 @@ type FormValues = {
 export default function MedsPage() {
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [entryMode, setEntryMode] = useState<"photo" | "manual" | null>(null);
-
-  const [parsedValues, setParsedValues] = useState<Partial<FormValues> | null>(
-    null
-  );
+  const [draft, setDraft] = useState<MedicationDraft>(emptyMedicationDraft);
   const [suggestedFields, setSuggestedFields] = useState<SuggestedFields>({});
 
+  const resetAddFlow = () => {
+    setEntryMode(null);
+    setDraft(emptyMedicationDraft);
+    setSuggestedFields({});
+  };
+
   const handleParsed = (
-    values: Partial<FormValues>,
-    suggested: SuggestedFields
+    values: Partial<MedicationDraft>,
+    suggested: SuggestedFields,
   ) => {
-    setParsedValues(values);
+    setDraft((prev) => ({
+      ...prev,
+      ...values,
+      source: "photo",
+    }));
+
     setSuggestedFields(suggested);
     setEntryMode("manual");
   };
 
-  const resetAddFlow = () => {
-    setEntryMode(null);
-    setParsedValues(null);
-    setSuggestedFields({});
+  const handleManualSubmit = (values: VisibleFormValues) => {
+    const nextDraft: MedicationDraft = {
+      ...draft,
+
+      displayName: values.displayName,
+      dosageText: values.dosageText,
+      instructions: values.instructions,
+      recurrenceType: values.recurrenceType,
+      daysOfWeek: values.daysOfWeek,
+      time: values.time,
+
+      normalizedName:
+        draft.normalizedName || values.displayName.trim().toLowerCase(),
+
+      activeIngredients: draft.activeIngredients,
+      needsReview: draft.needsReview,
+      confidence: draft.confidence,
+      source: draft.source || "manual",
+    };
+
+    setDraft(nextDraft);
+
+    console.log("draft ready for backend linking:", nextDraft);
+  };
+
+  const formInitialValues = {
+    displayName: draft.displayName,
+    dosageText: draft.dosageText,
+    instructions: draft.instructions,
+    recurrenceType: draft.recurrenceType,
+    daysOfWeek: draft.daysOfWeek,
+    time: draft.time,
   };
 
   return (
@@ -118,14 +155,15 @@ export default function MedsPage() {
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => resetAddFlow()}
+                  onClick={resetAddFlow}
                   className="text-sm text-gray-500"
                 >
                   ← Back
                 </button>
                 <AddMedicationForm
-                  initialValues={parsedValues ?? undefined}
+                  initialValues={formInitialValues}
                   suggestedFields={suggestedFields}
+                  onSubmit={handleManualSubmit}
                 />
               </div>
             )}
@@ -141,18 +179,19 @@ export default function MedsPage() {
 
             <PhotoUploadPanel onParsed={handleParsed} />
             <AddMedicationForm
-              initialValues={parsedValues ?? undefined}
+              initialValues={formInitialValues}
               suggestedFields={suggestedFields}
+              onSubmit={handleManualSubmit}
             />
           </div>
         </>
       )}
 
-<div className="space-y-3">
-  {mockMedications.map((med) => (
-    <MedicationCard key={med.id} med={med} />
-  ))}
-</div>
+      <div className="space-y-3">
+        {mockMedications.map((med) => (
+          <MedicationCard key={med.id} med={med} />
+        ))}
+      </div>
     </div>
   );
 }
