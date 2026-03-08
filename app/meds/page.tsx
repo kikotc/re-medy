@@ -10,7 +10,11 @@ import {
   medicationDraftToCreatePayload,
 } from "@/lib/api";
 import { mockMedications } from "@/lib/mockData";
-import { emptyMedicationDraft, MedicationDraft } from "@/lib/types";
+import {
+  emptyMedicationDraft,
+  Medication,
+  MedicationDraft,
+} from "@/lib/types";
 
 type SuggestedFields = {
   displayName?: boolean;
@@ -42,11 +46,36 @@ export default function MedsPage() {
     | "UNCERTAIN_CONFIRM_REQUIRED"
     | null
   >(null);
+  const [medications, setMedications] = useState<Medication[]>(mockMedications);
 
   const resetAddFlow = () => {
     setEntryMode(null);
     setDraft(emptyMedicationDraft);
     setSuggestedFields({});
+  };
+
+  const draftToMedication = (currentDraft: MedicationDraft): Medication => {
+    const now = new Date().toISOString();
+
+    return {
+      id: `med_${Date.now()}`,
+      user_id: "demo-user",
+      display_name: currentDraft.displayName,
+      normalized_name:
+        currentDraft.normalizedName || currentDraft.displayName.toLowerCase(),
+      active_ingredients: currentDraft.activeIngredients,
+      dosage_text: currentDraft.dosageText,
+      instructions: currentDraft.instructions,
+      start_date: now.slice(0, 10),
+      source: currentDraft.source,
+      schedule: {
+        recurrence_type: currentDraft.recurrenceType,
+        days_of_week:
+          currentDraft.recurrenceType === "weekly" ? currentDraft.daysOfWeek : [],
+        times: currentDraft.time ? [currentDraft.time] : [],
+      },
+      created_at: now,
+    };
   };
 
   const handleParsed = (
@@ -138,7 +167,8 @@ export default function MedsPage() {
                   : "We could not confidently determine whether this medication is safe."
           }
           onConfirm={() => {
-            console.log("confirmed");
+            const newMedication = draftToMedication(draft);
+            setMedications((prev) => [newMedication, ...prev]);
             setMockDecisionStatus(null);
             setShowAddPanel(false);
             resetAddFlow();
@@ -151,7 +181,9 @@ export default function MedsPage() {
       )}
 
       {showAddPanel && (
-        <div className={mockDecisionStatus ? "pointer-events-none opacity-50" : ""}>
+        <div
+          className={mockDecisionStatus ? "pointer-events-none opacity-50" : ""}
+        >
           <>
             <div className="space-y-3 rounded-2xl border p-4 md:hidden">
               {!entryMode && (
@@ -240,7 +272,7 @@ export default function MedsPage() {
       )}
 
       <div className="space-y-3">
-        {mockMedications.map((med) => (
+        {medications.map((med) => (
           <MedicationCard key={med.id} med={med} />
         ))}
       </div>
