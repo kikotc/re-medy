@@ -206,16 +206,10 @@ ConflictStatus = Literal[
 
 
 class ConflictCheckResponse(BaseModel):
-    decision_status: ConflictStatus
+    decision_status: ConflictStatus = "SAFE_TO_ADD"
     duplicates: list[DuplicateRisk] = Field(default_factory=list)
     conflicts: list[InteractionConflict] = Field(default_factory=list)
     schedule_suggestions: list[ScheduleSuggestion] = Field(default_factory=list)
-    decision_status: Literal[
-        "SAFE_TO_ADD",
-        "WARNING_CONFIRM_REQUIRED",
-        "SCHEDULE_CHANGE_CONFIRM_REQUIRED",
-        "UNCERTAIN_CONFIRM_REQUIRED",
-    ] = "SAFE_TO_ADD"
     message: str = ""
 
 

@@ -125,34 +125,9 @@ async def get_today_schedule(
     return expand_schedule_for_date(meds, today, taken_lookup)
 
 
-@router.get("/schedule/{user_id}/month", response_model=MonthlyScheduleResponse)
-async def get_monthly_schedule(
-    user_id: str,
-    year: int = Query(..., description="Year, e.g. 2026"),
-    month: int = Query(..., ge=1, le=12, description="Month, 1-12"),
-):
-    db = get_supabase()
-    rows = db.table("medications").select("*").eq("user_id", user_id).execute()
-    meds = [_row_to_medication(r) for r in rows.data]
-
-    import calendar as cal
-    num_days = cal.monthrange(year, month)[1]
-    start = date(year, month, 1)
-    end = date(year, month, num_days)
-    taken_lookup = _build_taken_lookup(user_id, start, end)
-
-    response = expand_monthly_schedule(meds, year, month, taken_lookup)
-    response.user_id = user_id
-    return response
-
-
 @router.post("/schedule/apply-suggestion")
 async def apply_schedule_suggestion(req: ApplyScheduleSuggestionRequest):
-    """Apply a schedule change and record an audit event.
-
-    Point 6: target_medication_id identifies which med is being changed
-    (could be an existing med, not just the candidate).
-    """
+    """Apply a schedule change and record one audit event."""
     db = get_supabase()
 
     # Verify medication exists and belongs to user
@@ -169,36 +144,25 @@ async def apply_schedule_suggestion(req: ApplyScheduleSuggestionRequest):
     old_schedule = result.data[0].get("schedule", {})
 
     # Update the schedule
-    db.table("medications").update({
-        "schedule": req.suggested_schedule.model_dump()
-    }).eq("id", req.target_medication_id).execute()
+    db.table("medications").update(
+        {"schedule": req.suggested_schedule.model_dump()}
+    ).eq("id", req.target_medication_id).execute()
 
-    # Point 5: write audit event to schedule_adjustment_events
+    # Write a single audit event
     try:
-        db.table("schedule_adjustment_events").insert({
-            "user_id": req.user_id,
-            "target_medication_id": req.target_medication_id,
-            "old_schedule": old_schedule,
-            "suggested_schedule": req.suggested_schedule.model_dump(),
-            "reason": req.reason,
-            "applied": True,
-            "applied_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        db.table("schedule_adjustment_events").insert(
+            {
+                "user_id": req.user_id,
+                "target_medication_id": req.target_medication_id,
+                "old_schedule": old_schedule,
+                "suggested_schedule": req.suggested_schedule.model_dump(),
+                "reason": req.reason,
+                "applied": True,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).execute()
     except Exception:
         pass  # Audit failure should not block the update
-
-    # Record audit event in schedule_adjustment_events
-    from datetime import timezone
-    now_iso = datetime.now(timezone.utc).isoformat()
-    db.table("schedule_adjustment_events").insert({
-        "user_id": req.user_id,
-        "target_medication_id": req.medication_id,
-        "old_schedule": old_schedule,
-        "suggested_schedule": req.suggested_schedule.model_dump(),
-        "applied": True,
-        "reason": req.reason,
-        "applied_at": now_iso,
-    }).execute()
 
     return {
         "status": "updated",

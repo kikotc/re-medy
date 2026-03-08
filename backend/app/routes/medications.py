@@ -63,7 +63,6 @@ async def create_medication(req: MedicationCreateRequest):
     # Ensure user exists (FK constraint)
     _ensure_user_exists(req.user_id)
 
-    # Build and insert the medication row
     now_iso = datetime.now(timezone.utc).isoformat()
     row = {
         "id": med_id,
@@ -80,9 +79,26 @@ async def create_medication(req: MedicationCreateRequest):
         "confidence": req.confidence,
         "created_at": now_iso,
     }
-    db.table("medications").insert(row).execute()
 
-    med = _row_to_medication(row)
+    try:
+        result = db.table("medications").insert(row).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save medication: {e}")
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Medication insert returned no data")
+
+    saved_row = result.data[0]
+
+    # Some Supabase setups may not echo inserted row fields consistently,
+    # so fall back to fetching by id if needed.
+    if saved_row.get("id") != med_id:
+        fetch = db.table("medications").select("*").eq("id", med_id).execute()
+        if not fetch.data:
+            raise HTTPException(status_code=500, detail="Medication saved but could not be reloaded")
+        saved_row = fetch.data[0]
+
+    med = _row_to_medication(saved_row)
     return MedicationCreateResponse(status="saved", medication=med)
 
 

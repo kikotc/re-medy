@@ -190,52 +190,89 @@ async def check_interactions(
 def generate_schedule_suggestions(
     candidate_schedule: Schedule,
     conflicts: list[InteractionConflict],
+    existing_meds: list[Medication],
     candidate_display_name: str = "new medication",
 ) -> list[ScheduleSuggestion]:
-    """Generate schedule adjustment suggestions for reschedulable conflicts only."""
+    """Generate schedule adjustment suggestions.
+
+    Prefer adjusting the existing medication when the conflict points to one.
+    Fall back to adjusting the candidate medication.
+    """
     suggestions: list[ScheduleSuggestion] = []
 
-    # Build a lookup for existing med names
-    med_lookup: dict[str, str] = {}
-    if existing_meds:
-        med_lookup = {m.id: m.display_name for m in existing_meds}
+    med_lookup = {m.id: m for m in existing_meds}
 
     for conflict in conflicts:
         if not conflict.auto_reschedulable:
-            suggestions.append(ScheduleSuggestion(
-                target_medication_id="candidate",
-                target_medication_name=candidate_display_name,
-                is_candidate=True,
-                allowed=False,
-                reason=f"Major interaction cannot be safely auto-rescheduled: {conflict.reason}",
-                change_type=None,
-                separation_hours=None,
-                original_schedule=candidate_schedule,
-                suggested_schedule=None,
-            ))
+            suggestions.append(
+                ScheduleSuggestion(
+                    target_medication_id="candidate",
+                    target_medication_name=candidate_display_name,
+                    is_candidate=True,
+                    allowed=False,
+                    reason=f"Major interaction cannot be safely auto-rescheduled: {conflict.reason}",
+                    change_type=None,
+                    separation_hours=None,
+                    original_schedule=candidate_schedule,
+                    suggested_schedule=None,
+                )
+            )
             continue
 
         sep = conflict.separation_hours or 2
-        new_times: list[str] = []
-        for t in candidate_schedule.times:
-            h, m = map(int, t.split(":"))
-            new_h = (h + sep) % 24
-            new_times.append(f"{new_h:02d}:{m:02d}")
 
-        suggestions.append(ScheduleSuggestion(
-            target_medication_id="candidate",
-            target_medication_name=candidate_display_name,
-            is_candidate=True,
-            allowed=True,
-            reason=f"Separate from {conflict.with_medication_name} by at least {sep} hours",
-            change_type="separate_by_hours",
-            separation_hours=sep,
-            original_schedule=candidate_schedule,
-            suggested_schedule=Schedule(
-                recurrence_type=candidate_schedule.recurrence_type,
-                days_of_week=candidate_schedule.days_of_week,
-                times=new_times,
-            ),
-        ))
+        # Prefer adjusting the existing medication if we can find it
+        target_med = med_lookup.get(conflict.with_medication_id)
+
+        if target_med:
+            original_schedule = target_med.schedule
+            new_times: list[str] = []
+            for t in original_schedule.times:
+                h, m = map(int, t.split(":"))
+                new_h = (h + sep) % 24
+                new_times.append(f"{new_h:02d}:{m:02d}")
+
+            suggestions.append(
+                ScheduleSuggestion(
+                    target_medication_id=target_med.id,
+                    target_medication_name=target_med.display_name,
+                    is_candidate=False,
+                    allowed=True,
+                    reason=f"Separate {target_med.display_name} from {candidate_display_name} by at least {sep} hours",
+                    change_type="separate_by_hours",
+                    separation_hours=sep,
+                    original_schedule=original_schedule,
+                    suggested_schedule=Schedule(
+                        recurrence_type=original_schedule.recurrence_type,
+                        days_of_week=original_schedule.days_of_week,
+                        times=new_times,
+                    ),
+                )
+            )
+        else:
+            # Fall back to adjusting the candidate medication
+            new_times: list[str] = []
+            for t in candidate_schedule.times:
+                h, m = map(int, t.split(":"))
+                new_h = (h + sep) % 24
+                new_times.append(f"{new_h:02d}:{m:02d}")
+
+            suggestions.append(
+                ScheduleSuggestion(
+                    target_medication_id="candidate",
+                    target_medication_name=candidate_display_name,
+                    is_candidate=True,
+                    allowed=True,
+                    reason=f"Separate from {conflict.with_medication_name} by at least {sep} hours",
+                    change_type="separate_by_hours",
+                    separation_hours=sep,
+                    original_schedule=candidate_schedule,
+                    suggested_schedule=Schedule(
+                        recurrence_type=candidate_schedule.recurrence_type,
+                        days_of_week=candidate_schedule.days_of_week,
+                        times=new_times,
+                    ),
+                )
+            )
 
     return suggestions
