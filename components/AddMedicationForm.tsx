@@ -53,7 +53,7 @@ function FieldLabel({
     <div className="flex items-center gap-2">
       <label className="text-sm font-medium">{label}</label>
       {suggested && (
-        <span className="rounded-full border px-2 py-0.5 text-xs text-gray-500">
+        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/50">
           Suggested
         </span>
       )}
@@ -136,7 +136,7 @@ export default function AddMedicationForm({
   };
 
   return (
-    <form onSubmit={handleFormSubmit} className="space-y-4 rounded-2xl border p-4">
+    <form onSubmit={handleFormSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-4">
       <div className="space-y-1">
         <FieldLabel
           label="Medication Name"
@@ -149,7 +149,7 @@ export default function AddMedicationForm({
             setValues((prev) => ({ ...prev, displayName: e.target.value }))
           }
           placeholder="e.g. Advil"
-          className="w-full rounded-xl border px-3 py-2"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-white/30 focus:border-white/25 focus:bg-white/10 transition-all outline-none"
         />
       </div>
 
@@ -162,7 +162,7 @@ export default function AddMedicationForm({
             setValues((prev) => ({ ...prev, dosageText: e.target.value }))
           }
           placeholder="e.g. 200 mg"
-          className="w-full rounded-xl border px-3 py-2"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-white/30 focus:border-white/25 focus:bg-white/10 transition-all outline-none"
         />
       </div>
 
@@ -178,7 +178,7 @@ export default function AddMedicationForm({
           }
           placeholder="e.g. Take after meals"
           rows={3}
-          className="w-full rounded-xl border px-3 py-2"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-white/30 focus:border-white/25 focus:bg-white/10 transition-all outline-none"
         />
       </div>
 
@@ -197,10 +197,10 @@ export default function AddMedicationForm({
                 e.target.value === "weekly" ? prev.daysOfWeek : [],
             }))
           }
-          className="w-full rounded-xl border px-3 py-2"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-white/25 focus:bg-white/10 transition-all outline-none"
         >
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
+          <option value="daily" className="bg-neutral-900">Daily</option>
+          <option value="weekly" className="bg-neutral-900">Weekly</option>
         </select>
       </div>
 
@@ -218,8 +218,8 @@ export default function AddMedicationForm({
                   key={day}
                   type="button"
                   onClick={() => toggleDay(day)}
-                  className={`rounded-full border px-3 py-1 text-sm capitalize ${
-                    active ? "bg-black text-white" : ""
+                  className={`rounded-full border border-white/10 px-3 py-1 text-sm capitalize transition-all ${
+                    active ? "bg-white/20 text-white ring-1 ring-white/30" : "text-white/60 hover:bg-white/10"
                   }`}
                 >
                   {day.slice(0, 3)}
@@ -238,7 +238,7 @@ export default function AddMedicationForm({
           onChange={(e) =>
             setValues((prev) => ({ ...prev, time: e.target.value }))
           }
-          className="w-full rounded-xl border px-3 py-2"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-white/25 focus:bg-white/10 transition-all outline-none"
         />
       </div>
 
@@ -250,7 +250,7 @@ export default function AddMedicationForm({
             type="button"
             onClick={() => submitWithAction("autofill")}
             disabled={submitting || !hasRequiredBaseFields}
-            className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
+            className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all disabled:opacity-60"
           >
             {submitting ? "Working..." : "Autofill Missing Fields"}
           </button>
@@ -261,7 +261,7 @@ export default function AddMedicationForm({
             type="button"
             onClick={() => submitWithAction("check")}
             disabled={submitting}
-            className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
+            className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all disabled:opacity-60"
           >
             {submitting ? "Working..." : "Check Medication"}
           </button>

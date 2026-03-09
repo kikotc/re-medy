@@ -283,17 +283,17 @@ function renderDecisionDetails(
     <div className="space-y-4 text-sm">
       {hasDuplicates && (
         <div className="space-y-2">
-          <div className="font-medium">Duplicate ingredients</div>
+          <div className="font-medium text-white">Duplicate ingredients</div>
           {decision.duplicates.map((duplicate, index) => (
             <div
               key={`${duplicate.with_medication_id}-${duplicate.ingredient}-${index}`}
-              className="rounded-xl border p-3"
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-md"
             >
-              <div className="font-medium">
+              <div className="font-medium text-white">
                 {candidateDisplayName || "This medication"} overlaps with{" "}
                 {duplicate.with_medication_name}
               </div>
-              <div className="mt-1 text-gray-500">{duplicate.reason}</div>
+              <div className="mt-1 text-white/50">{duplicate.reason}</div>
             </div>
           ))}
         </div>
@@ -301,33 +301,33 @@ function renderDecisionDetails(
 
       {hasConflicts && (
         <div className="space-y-2">
-          <div className="font-medium">Interaction details</div>
+          <div className="font-medium text-white">Interaction details</div>
 
           {Array.from(groupedConflicts.values()).map((group, index) => (
             <div
               key={`${group.withMedicationId}-${index}`}
-              className="rounded-xl border p-3"
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-md"
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="font-medium">
+                <div className="font-medium text-white">
                   {candidateDisplayName || "This medication"} +{" "}
                   {group.withMedicationName}
                 </div>
-                <span className="capitalize text-gray-500">
+                <span className="capitalize text-white/50">
                   {group.severity}
                 </span>
               </div>
 
               {group.ingredientPairs.length > 0 && (
-                <div className="mt-1 text-gray-500">
+                <div className="mt-1 text-white/50">
                   Active ingredients involved: {group.ingredientPairs.join(", ")}
                 </div>
               )}
 
               {group.reasons.length > 0 && (
                 <div className="mt-2">
-                  <div className="font-medium">Why</div>
-                  <div className="space-y-1 text-gray-500">
+                  <div className="font-medium text-white">Why</div>
+                  <div className="space-y-1 text-white/50">
                     {group.reasons.map((reason, reasonIndex) => (
                       <div key={reasonIndex}>{reason}</div>
                     ))}
@@ -337,8 +337,8 @@ function renderDecisionDetails(
 
               {group.guidance.length > 0 && (
                 <div className="mt-2">
-                  <div className="font-medium">What to do</div>
-                  <div className="space-y-1 text-gray-500">
+                  <div className="font-medium text-white">What to do</div>
+                  <div className="space-y-1 text-white/50">
                     {group.guidance.map((guidance, guidanceIndex) => (
                       <div key={guidanceIndex}>{guidance}</div>
                     ))}
@@ -347,7 +347,7 @@ function renderDecisionDetails(
               )}
 
               {group.separationHours.length > 0 && (
-                <div className="mt-2 text-gray-500">
+                <div className="mt-2 text-white/50">
                   Suggested separation: at least{" "}
                   {Math.max(...group.separationHours)} hour
                   {Math.max(...group.separationHours) === 1 ? "" : "s"}
@@ -360,20 +360,20 @@ function renderDecisionDetails(
 
       {hasSuggestions && (
         <div className="space-y-2">
-          <div className="font-medium">Schedule suggestions</div>
+          <div className="font-medium text-white">Schedule suggestions</div>
           {decision.schedule_suggestions.map((suggestion, index) => (
             <div
               key={`${suggestion.target_medication_id}-${index}`}
-              className="rounded-xl border p-3"
+              className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-md"
             >
-              <div className="font-medium">
+              <div className="font-medium text-white">
                 {suggestion.target_medication_name || "Medication"}
               </div>
 
-              <div className="mt-1 text-gray-500">{suggestion.reason}</div>
+              <div className="mt-1 text-white/50">{suggestion.reason}</div>
 
               {suggestion.suggested_schedule?.times?.length ? (
-                <div className="mt-2 text-gray-500">
+                <div className="mt-2 text-white/50">
                   Suggested time
                   {suggestion.suggested_schedule.times.length > 1 ? "s" : ""}:{" "}
                   {suggestion.suggested_schedule.times
@@ -580,9 +580,9 @@ export default function MedsPage() {
     : null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Meds</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Meds</h1>
         <button
           onClick={() => {
             setShowAddPanel((prev) => !prev);
@@ -591,7 +591,7 @@ export default function MedsPage() {
               setDecision(null);
             }
           }}
-          className="rounded-full border px-4 py-2 text-sm font-medium"
+          className="rounded-full border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-medium text-white backdrop-blur-md transition-all duration-150 hover:bg-white/20"
         >
           {showAddPanel ? "Close" : "Add Medication"}
         </button>
@@ -617,12 +617,12 @@ export default function MedsPage() {
       {showAddPanel && (
         <div className={decision ? "pointer-events-none opacity-50" : ""}>
           <>
-            <div className="space-y-3 rounded-2xl border p-4 md:hidden">
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl md:hidden">
               {!entryMode && (
                 <>
                   <div>
-                    <h2 className="text-lg font-semibold">Add Medication</h2>
-                    <p className="text-sm text-gray-500">
+                    <h2 className="text-lg font-semibold text-white">Add Medication</h2>
+                    <p className="text-sm text-white/50">
                       Taking a photo is the fastest option on mobile.
                     </p>
                   </div>
@@ -631,10 +631,10 @@ export default function MedsPage() {
                     <button
                       type="button"
                       onClick={() => setEntryMode("photo")}
-                      className="w-full rounded-2xl border px-4 py-4 text-left"
+                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition-all duration-200 ease-in-out hover:bg-white/10"
                     >
-                      <div className="font-medium">Add by Photo</div>
-                      <div className="text-sm text-gray-500">
+                      <div className="font-medium text-white">Add by Photo</div>
+                      <div className="text-sm text-white/50">
                         Snap or upload a medication bottle or box
                       </div>
                     </button>
@@ -642,10 +642,10 @@ export default function MedsPage() {
                     <button
                       type="button"
                       onClick={() => setEntryMode("manual")}
-                      className="w-full rounded-2xl border px-4 py-4 text-left"
+                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition-all duration-200 ease-in-out hover:bg-white/10"
                     >
-                      <div className="font-medium">Enter Manually</div>
-                      <div className="text-sm text-gray-500">
+                      <div className="font-medium text-white">Enter Manually</div>
+                      <div className="text-sm text-white/50">
                         Type medication details yourself
                       </div>
                     </button>
@@ -658,7 +658,7 @@ export default function MedsPage() {
                   <button
                     type="button"
                     onClick={() => setEntryMode(null)}
-                    className="text-sm text-gray-500"
+                    className="text-sm text-white/50 hover:text-white transition-colors"
                   >
                     ← Back
                   </button>
@@ -671,7 +671,7 @@ export default function MedsPage() {
                   <button
                     type="button"
                     onClick={resetAddFlow}
-                    className="text-sm text-gray-500"
+                    className="text-sm text-white/50 hover:text-white transition-colors"
                   >
                     ← Back
                   </button>
@@ -686,10 +686,10 @@ export default function MedsPage() {
               )}
             </div>
 
-            <div className="hidden space-y-3 rounded-2xl border p-4 md:block">
+            <div className="hidden space-y-3 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl md:block">
               <div>
-                <h2 className="text-lg font-semibold">Add Medication</h2>
-                <p className="text-sm text-gray-500">
+                <h2 className="text-lg font-bold text-white">Add Medication</h2>
+                <p className="text-sm text-white/50">
                   Enter details manually or upload a photo.
                 </p>
               </div>
@@ -709,11 +709,11 @@ export default function MedsPage() {
 
       <div className="space-y-3">
         {loadingMeds ? (
-          <div className="rounded-2xl border p-4 text-sm text-gray-500">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/50 shadow-lg backdrop-blur-xl">
             Loading medications...
           </div>
         ) : medications.length === 0 ? (
-          <div className="rounded-2xl border p-4 text-sm text-gray-500">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/50 shadow-lg backdrop-blur-xl">
             No medications added yet.
           </div>
         ) : (

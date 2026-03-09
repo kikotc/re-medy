@@ -53,13 +53,13 @@ export default function MedicationDecisionPanel({
   }[status];
 
   return (
-    <div className="space-y-4 rounded-2xl border p-4">
+    <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-4">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold">{title || defaults.title}</h2>
-        <p className="text-sm text-gray-500">{message}</p>
+        <h2 className="text-lg font-semibold text-white">{title || defaults.title}</h2>
+        <p className="text-sm text-white/50">{message}</p>
       </div>
 
-      {details && <div className="rounded-xl border p-3">{details}</div>}
+      {details && <div className="rounded-xl border border-white/10 bg-white/5 p-3">{details}</div>}
 
       <div className="flex gap-2">
         {cancelFirst ? (
@@ -68,7 +68,7 @@ export default function MedicationDecisionPanel({
               type="button"
               autoFocus
               onClick={onCancel}
-              className="rounded-full border px-4 py-2 text-sm font-medium"
+              className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all"
             >
               {cancelLabel || defaults.cancelLabel}
             </button>
@@ -76,7 +76,7 @@ export default function MedicationDecisionPanel({
             <button
               type="button"
               onClick={onConfirm}
-              className="rounded-full border px-4 py-2 text-sm text-gray-500"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/50 hover:bg-white/10 transition-all"
             >
               {confirmLabel || defaults.confirmLabel}
             </button>
@@ -86,7 +86,7 @@ export default function MedicationDecisionPanel({
             <button
               type="button"
               onClick={onConfirm}
-              className="rounded-full border px-4 py-2 text-sm font-medium"
+              className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all"
             >
               {confirmLabel || defaults.confirmLabel}
             </button>
@@ -94,7 +94,7 @@ export default function MedicationDecisionPanel({
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-full border px-4 py-2 text-sm text-gray-500"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/50 hover:bg-white/10 transition-all"
             >
               {cancelLabel || defaults.cancelLabel}
             </button>

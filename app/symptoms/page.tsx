@@ -45,89 +45,89 @@ export default function SymptomsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Symptoms</h1>
-        <p className="text-sm text-gray-500">
+        <h1 className="text-3xl font-bold tracking-tight">Symptoms</h1>
+        <p className="mt-1 text-sm text-white/60">
           Log a symptom and see possible medication causes.
         </p>
       </div>
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-4 rounded-2xl border p-4"
+        className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl md:p-8"
       >
         <div className="space-y-1">
-          <label className="text-sm font-medium">Symptom</label>
+          <label className="text-sm font-medium text-white">Symptom</label>
           <input
             required
             value={effect}
             onChange={(e) => setEffect(e.target.value)}
             placeholder="e.g. dizziness"
-            className="w-full rounded-xl border px-3 py-2"
+            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/30 backdrop-blur-md outline-none transition-colors focus:border-white/25 focus:bg-white/10"
           />
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium">Severity</label>
+          <label className="text-sm font-medium text-white">Severity</label>
           <select
             value={severity}
             onChange={(e) => setSeverity(e.target.value as SymptomSeverity)}
-            className="w-full rounded-xl border px-3 py-2"
+            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white backdrop-blur-md outline-none transition-colors focus:border-white/25 focus:bg-white/10"
           >
-            <option value="mild">Mild</option>
-            <option value="moderate">Moderate</option>
-            <option value="severe">Severe</option>
+            <option value="mild" className="bg-neutral-900">Mild</option>
+            <option value="moderate" className="bg-neutral-900">Moderate</option>
+            <option value="severe" className="bg-neutral-900">Severe</option>
           </select>
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium">Notes</label>
+          <label className="text-sm font-medium text-white">Notes</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional"
             rows={3}
-            className="w-full rounded-xl border px-3 py-2"
+            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/30 backdrop-blur-md outline-none transition-colors focus:border-white/25 focus:bg-white/10"
           />
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
+          className="rounded-full border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-medium text-white backdrop-blur-md transition-all duration-150 hover:bg-white/20 disabled:opacity-60"
         >
           {loading ? "Analyzing..." : "Analyze Symptom"}
         </button>
       </form>
 
       {result && (
-        <div className="space-y-3 rounded-2xl border p-4">
+        <div className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur-xl md:p-8">
           <div>
-            <h2 className="text-lg font-semibold">Possible Causes</h2>
-            <p className="text-sm text-gray-500">{result.effect}</p>
+            <h2 className="text-lg font-bold text-white">Possible Causes</h2>
+            <p className="text-sm text-white/50">{result.effect}</p>
           </div>
 
           <div className="space-y-2">
             {result.likely_culprits.map((culprit) => (
               <div
                 key={culprit.medication_id}
-                className="rounded-xl border p-3"
+                className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-md transition-all duration-200 ease-in-out hover:bg-white/10 hover:scale-[1.01]"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium">{culprit.display_name}</div>
-                  <span className="text-sm text-gray-500 capitalize">
+                  <div className="font-medium text-white">{culprit.display_name}</div>
+                  <span className="text-sm capitalize text-white/50">
                     {culprit.likelihood}
                   </span>
                 </div>
-                <div className="mt-1 text-sm text-gray-500">
+                <div className="mt-1 text-sm text-white/50">
                   {culprit.reason}
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="text-sm text-gray-500">{result.disclaimer}</div>
+          <div className="text-sm text-white/40">{result.disclaimer}</div>
         </div>
       )}
     </div>
