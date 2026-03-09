@@ -227,10 +227,10 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
   };
 
   return (
-    <div className="space-y-3 rounded-2xl border p-4">
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-4">
       <div>
-        <h3 className="font-medium">Photo Import</h3>
-        <p className="text-sm text-gray-500">
+        <h3 className="font-medium text-white">Photo Import</h3>
+        <p className="text-sm text-white/50">
           Upload a medication label or take a photo to extract details.
         </p>
       </div>
@@ -239,7 +239,7 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
         <button
           type="button"
           onClick={handleUploadClick}
-          className="rounded-full border px-4 py-2 text-sm font-medium"
+          className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all"
         >
           Upload Image
         </button>
@@ -248,7 +248,7 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
           <button
             type="button"
             onClick={startCamera}
-            className="rounded-full border px-4 py-2 text-sm font-medium"
+            className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all"
           >
             Take Photo
           </button>
@@ -273,13 +273,13 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
             ref={videoRef}
             autoPlay
             playsInline
-            className="w-full rounded-2xl border"
+            className="w-full rounded-2xl border border-white/10"
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={capturePhoto}
-              className="rounded-full border px-4 py-2 text-sm font-medium"
+              className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all"
             >
               Capture
             </button>
@@ -289,7 +289,7 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
                 setShowCamera(false);
                 stopCamera();
               }}
-              className="rounded-full border px-4 py-2 text-sm font-medium"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-white/50 hover:bg-white/10 transition-all"
             >
               Cancel
             </button>
@@ -302,7 +302,7 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
           <img
             src={previewUrl}
             alt="Medication preview"
-            className="w-full rounded-2xl border object-cover"
+            className="w-full rounded-2xl border border-white/10 object-cover"
           />
 
           <div className="flex gap-2">
@@ -310,7 +310,7 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
               type="button"
               onClick={handleParse}
               disabled={isParsing}
-              className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
+              className="rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition-all disabled:opacity-60"
             >
               {isParsing ? "Analyzing..." : "Use Photo"}
             </button>
@@ -318,7 +318,7 @@ export default function PhotoUploadPanel({ onParsed }: PhotoUploadPanelProps) {
             <button
               type="button"
               onClick={clearPreview}
-              className="rounded-full border px-4 py-2 text-sm font-medium"
+              className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-white/50 hover:bg-white/10 transition-all"
             >
               Remove
             </button>
